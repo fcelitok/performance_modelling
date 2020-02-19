@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+    <arg name="base_filename" />
+
+    <node name="map_saver" pkg="map_server" type="map_saver" output="screen" args="-f $(arg base_filename)" >
+    </node>
+
+</launch>
