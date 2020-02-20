@@ -7,7 +7,6 @@
     <arg name="stage_args" value="-g"   if="$(arg headless)" />
     <arg name="stage_args" value=""     unless="$(arg headless)" />
 
-
     <node name="stage" pkg="stage_ros" type="stageros" args="$(arg stage_args) $(arg stage_world_file)">
         <param name="base_watchdog_timeout" value="0" />
     </node>
