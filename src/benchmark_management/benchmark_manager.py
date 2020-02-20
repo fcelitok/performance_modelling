@@ -16,8 +16,8 @@ class BenchmarkManager(object):
 
         # run parameters
         self.headless = False
-        self.map_steady_state_period = 600.0
-        self.map_snapshot_period = 30.0
+        self.map_steady_state_period = 60.0
+        self.map_snapshot_period = 5.0
         self.run_timeout = 10800.0
 
         # run constants
@@ -66,6 +66,7 @@ class BenchmarkManager(object):
         # Timeout and other criteria can also terminate the supervisor.
         print("execute_run: Waiting for supervisor to finish")
         self.supervisor.wait_to_finish()
+        print("execute_run: supervisor has shutdown")
 
         # Destroy timers and shutdown remaining components
         run_timeout_timer.shutdown()

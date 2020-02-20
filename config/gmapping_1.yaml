@@ -1,7 +1,7 @@
-xmin: -100
-ymin: -100
-ymax: 100
-xmax: 100
+xmin: -3
+ymin: -3
+ymax: 3
+xmax: 3
 ogain: 3.0
 minimumScore: 0
 angularUpdate: 0.25
