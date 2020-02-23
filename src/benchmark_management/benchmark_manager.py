@@ -51,7 +51,7 @@ class BenchmarkManager(object):
         # Launch roscore and manager's own node
         roscore.launch()
         rospy.init_node('benchmark_manager_node', anonymous=True)
-        run_timeout_timer = rospy.Timer(rospy.Duration.from_sec(self.run_timeout), self.run_timeout_callback)
+        run_timeout_timer = rospy.Timer(rospy.Duration.from_sec(self.run_timeout), self.run_timeout_callback, oneshot=True)
 
         # Launch components
         if not self.headless:
