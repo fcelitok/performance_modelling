@@ -15,7 +15,7 @@ def backup_file_if_exists(target_path):
     if path.exists(target_path):
         backup_path = path.abspath(target_path) + '.backup'
         backup_file_if_exists(backup_path)
-        print("backing up: {} -> {}".format(target_path, backup_path))
+        print("backup_file_if_exists: {} -> {}".format(target_path, backup_path))
         os.rename(target_path, backup_path)
 
 
