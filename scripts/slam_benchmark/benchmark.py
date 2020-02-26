@@ -55,12 +55,12 @@ class BenchmarkRun(object):
         explorer = Component('explorer', components_pkg, 'lite_explorer.launch')
         self.supervisor = Component('supervisor', 'slam_benchmark_supervisor', 'supervisor.launch')
 
-        # Prepare folder structure
+        # prepare folder structure
         backup_file_if_exists(self.run_output_folder)
         os.mkdir(self.run_output_folder)
         bag_file_path = path.join(self.run_output_folder, "odom_tf_ground_truth.bag")
 
-        # Launch components
+        # launch components
         print("execute_run: launching components")
         roscore.launch()
         rviz.launch(headless=self.headless,
@@ -76,23 +76,24 @@ class BenchmarkRun(object):
                           global_planner_configuration=self.global_planner_configuration_file,
                           output=self.components_ros_output)
         explorer.launch(output=self.components_ros_output)
-        self.supervisor.launch(run_timeout=self.run_timeout,
-                               write_base_link_poses_period=0.01,
+        self.supervisor.launch(run_output_folder=self.run_output_folder,
+                               run_timeout=self.run_timeout,
                                map_steady_state_period=self.map_steady_state_period,
                                map_snapshot_period=self.map_snapshot_period,
-                               run_output_folder=self.run_output_folder,
                                map_change_threshold=10.0,
-                               size_change_threshold=5.0,
-                               output=self.components_ros_output)
+                               map_size_change_threshold=5.0,
+                               map_occupied_threshold=65,
+                               map_free_threshold=25,
+                               write_base_link_poses_period=0.1)
 
         # TODO check if all components launched properly
 
-        # Wait for the supervisor component to finish.
+        # wait for the supervisor component to finish.
         print("execute_run: waiting for supervisor to finish")
         self.supervisor.wait_to_finish()
         print("execute_run: supervisor has shutdown")
 
-        # Shutdown remaining components
+        # shutdown remaining components
         rviz.shutdown()
         explorer.shutdown()
         navigation.shutdown()
