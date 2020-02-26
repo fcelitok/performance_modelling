@@ -125,7 +125,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      relations_path=relations_re_file_path,
                      weights="{1, 1, 1, 0, 0, 0}",
                      log_path=path.join(log_output_folder, "re_t.log"),
-                     errors_path=path.join(results_output_folder, "re_t.errors"),
+                     errors_path=path.join(results_output_folder, "re_t.csv"),
                      unsorted_errors_path=path.join(results_output_folder, "re_t_unsorted.errors"))
 
     metric_evaluator(exec_path=metric_evaluator_exec_path,
@@ -133,7 +133,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      relations_path=relations_re_file_path,
                      weights="{0, 0, 0, 1, 1, 1}",
                      log_path=path.join(log_output_folder, "re_r.log"),
-                     errors_path=path.join(results_output_folder, "re_r.errors"),
+                     errors_path=path.join(results_output_folder, "re_r.csv"),
                      unsorted_errors_path=path.join(results_output_folder, "re_r_unsorted.errors"))
 
     # ORDERED
@@ -168,7 +168,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      relations_path=ordered_relations_file_path,
                      weights="{1, 1, 1, 0, 0, 0}",
                      log_path=path.join(log_output_folder, "ordered_t.log"),
-                     errors_path=path.join(results_output_folder, "ordered_t.errors"),
+                     errors_path=path.join(results_output_folder, "ordered_t.csv"),
                      unsorted_errors_path=path.join(results_output_folder, "ordered_t_unsorted.errors"))
 
     metric_evaluator(exec_path=metric_evaluator_exec_path,
@@ -176,7 +176,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      relations_path=ordered_relations_file_path,
                      weights="{0, 0, 0, 1, 1, 1}",
                      log_path=path.join(log_output_folder, "ordered_r.log"),
-                     errors_path=path.join(results_output_folder, "ordered_r.errors"),
+                     errors_path=path.join(results_output_folder, "ordered_r.csv"),
                      unsorted_errors_path=path.join(results_output_folder, "ordered_r_unsorted.errors"))
 
 
