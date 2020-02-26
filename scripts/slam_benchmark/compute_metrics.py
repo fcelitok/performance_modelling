@@ -19,7 +19,6 @@ import tf.transformations
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
-from pylab import savefig
 
 
 def write_ground_truth(bag_file_path, output_file_path):
@@ -81,32 +80,33 @@ def generate_relations_o_and_re(run_output_folder, base_link_poses_file_path, gr
 
     # RE
     relations_re_file_path = path.join(run_output_folder, "Relations/Original/", "RE.relations")
-    relations_file_re = open(relations_re_file_path, "w")
+    with open(relations_re_file_path, "w") as relations_file_re:
 
-    n_samples = 500
-    i = 0
+        if len(ground_truth_dict.keys()) == 0:
+            return
 
-    while i < n_samples:
-        first_stamp = float(random.choice(ground_truth_dict.keys()))
-        second_stamp = float(random.choice(ground_truth_dict.keys()))
-        if first_stamp > second_stamp:
-            temp = first_stamp
-            first_stamp = second_stamp
-            second_stamp = temp
-        first_pos = ground_truth_dict[first_stamp]
-        second_pos = ground_truth_dict[second_stamp]
+        n_samples = 500
+        i = 0
 
-        rel = get_matrix_diff(first_pos, second_pos)
+        while i < n_samples:
+            first_stamp = float(random.choice(ground_truth_dict.keys()))
+            second_stamp = float(random.choice(ground_truth_dict.keys()))
+            if first_stamp > second_stamp:
+                temp = first_stamp
+                first_stamp = second_stamp
+                second_stamp = temp
+            first_pos = ground_truth_dict[first_stamp]
+            second_pos = ground_truth_dict[second_stamp]
 
-        x = rel[0, 3]
-        y = rel[1, 3]
-        theta = math.atan2(rel[1, 0], rel[0, 0])
+            rel = get_matrix_diff(first_pos, second_pos)
 
-        relations_file_re.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
+            x = rel[0, 3]
+            y = rel[1, 3]
+            theta = math.atan2(rel[1, 0], rel[0, 0])
 
-        i += 1
+            relations_file_re.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
 
-    relations_file_re.close()
+            i += 1
 
     # now we invoke the metric evaluator on this relations file, we read the sample standard
     # deviation and we exploit it to rebuild a better sample
@@ -261,49 +261,7 @@ def get_matrix_diff(p1, p2):
     return m1.I * m2
 
 
-def plot_trajectory(traj_file_path):
-    file2 = open(traj_file_path, 'r')
-
-    x = []
-    y = []
-
-    for line in file2:
-        words = line.split(" ")
-        x.append(words[5])
-        y.append(words[6])
-
-    file2.close()
-    plt.plot(x, y, 'r')
-
-
-def plot_ground_truth_traj(traj_file_path):
-    file2 = open(traj_file_path, 'r')
-
-    x_gt = []
-    y_gt = []
-
-    for line in file2:
-        words = line.split(" ")
-        x_gt.append(words[1])
-        y_gt.append(words[2])
-
-    file2.close()
-    plt.plot(x_gt, y_gt, 'g')
-
-
-def save_plot(slam, gt, save):
-    plot_trajectory(slam)
-    savefig(save + "_slam.png")
-    plt.clf()
-
-    plot_ground_truth_traj(gt)
-    savefig(save + "_gt.png")
-
-    plot_trajectory(slam)
-    savefig(save)
-
-
-def save_plot2(base_link_poses_path, ground_truth_poses_path, figure_output_path):
+def save_trajectory_plot(base_link_poses_path, ground_truth_poses_path, figure_output_path):
     """
     Creates a figure with the trajectories slam and ground truth
     """
@@ -314,6 +272,8 @@ def save_plot2(base_link_poses_path, ground_truth_poses_path, figure_output_path
 
     for line in base_link_poses:
         words = line.split(" ")
+        if len(words) != 9:
+            continue
         x.append(float(words[5]))
         y.append(float(words[6]))
 
@@ -326,6 +286,8 @@ def save_plot2(base_link_poses_path, ground_truth_poses_path, figure_output_path
 
     for line in ground_truth_poses:
         words = line.split(" ")
+        if len(words) != 4:
+            continue
         x_gt.append(float(words[1]))
         y_gt.append(float(words[2]))
 
@@ -335,8 +297,7 @@ def save_plot2(base_link_poses_path, ground_truth_poses_path, figure_output_path
     ax.cla()
     ax.plot(x, y, 'r', x_gt, y_gt, 'b')
     fig.savefig(figure_output_path)
-    # plt.close(fig)
-    plt.show()
+    plt.close(fig)
 
 
 def generate_all(run_output_folder, metric_evaluator_exec_path, skip_ground_truth_conversion=False, skip_ordered_recomputation=False):
@@ -355,7 +316,8 @@ def generate_all(run_output_folder, metric_evaluator_exec_path, skip_ground_trut
 
     if path.isfile(base_link_poses_path):
         generate_relations_o_and_re(run_output_folder, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path, skip_ordered_recomputation=skip_ordered_recomputation)
-        save_plot2(base_link_poses_path, ground_truth_poses_path, path.join(run_output_folder, "trajectories.png"))
+        save_trajectory_plot(base_link_poses_path, ground_truth_poses_path, path.join(run_output_folder, "trajectories.png"))
+        save_trajectory_plot(base_link_poses_path, ground_truth_poses_path, path.join(run_output_folder, "trajectories.svg"))
     else:
         print("generate_all: base_link_transforms file not found {}".format(base_link_poses_path))
 

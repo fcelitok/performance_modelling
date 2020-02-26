@@ -2,9 +2,10 @@
 
 from __future__ import print_function
 
+import argparse
+
 import roslib
 import roslib.packages
-import sys
 import os
 from os import path
 
@@ -21,18 +22,25 @@ def backup_file_if_exists(target_path):
 
 
 class BenchmarkRun(object):
-    def __init__(self, run_output_folder, stage_world_file, gmapping_configuration_file, headless):
+    def __init__(self, run_output_folder, stage_world_file, gmapping_configuration_file, headless,
+                 local_planner_configuration_file, global_planner_configuration_file):
 
-        # run parameters
-        self.run_output_folder = run_output_folder
+        # Component configuration parameters
+        self.local_planner_configuration_file = local_planner_configuration_file
+        self.global_planner_configuration_file = global_planner_configuration_file
         self.gmapping_configuration_file = gmapping_configuration_file
+
+        # Environment parameters
         self.stage_world_file = stage_world_file
+
+        # Run parameters
+        self.run_output_folder = run_output_folder
         self.headless = headless
         self.map_steady_state_period = 60.0
         self.map_snapshot_period = 5.0
         self.run_timeout = 10800.0
 
-        # Find the metric_evaluator executable
+        # Find the metricEvaluator executable
         metric_evaluator_package_name = 'performance_modelling'
         metric_evaluator_exec_name = 'metricEvaluator'
         metric_evaluator_resources_list = roslib.packages.find_resource(metric_evaluator_package_name, metric_evaluator_exec_name)
@@ -56,7 +64,7 @@ class BenchmarkRun(object):
         recorder = Component('recorder', components_pkg, 'rosbag_recorder.launch')
         slam = Component('gmapping', components_pkg, 'gmapping.launch')
         navigation = Component('move_base', components_pkg, 'move_base.launch')
-        explorer = Component('explorer', components_pkg, 'explorer.launch')
+        explorer = Component('explorer', components_pkg, 'lite_explorer.launch')
         self.supervisor = Component('supervisor', 'slam_benchmark_supervisor', 'supervisor.launch')
 
         # Prepare folder structure
@@ -64,17 +72,21 @@ class BenchmarkRun(object):
         os.mkdir(self.run_output_folder)
         bag_file_path = path.join(self.run_output_folder, "odom_tf_ground_truth.bag")
 
+        print("execute_run: Launching roscore")
         # Launch roscore
         roscore.launch()
 
+        print("execute_run: Launching components")
         # Launch components
         rviz.launch(headless=self.headless)
         environment.launch(stage_world_file=self.stage_world_file,
                            headless=self.headless)
         recorder.launch(bag_file_path=bag_file_path)
         slam.launch(configuration=self.gmapping_configuration_file)
-        navigation.launch()
-        explorer.launch(log_path=self.run_output_folder)
+        navigation.launch(local_planner_configuration=self.local_planner_configuration_file,
+                          global_planner_configuration=self.global_planner_configuration_file)
+        # explorer.launch(log_path=self.run_output_folder)
+        explorer.launch()
         self.supervisor.launch(run_timeout=self.run_timeout,
                                write_base_link_poses_period=0.01,
                                map_steady_state_period=self.map_steady_state_period,
@@ -83,8 +95,9 @@ class BenchmarkRun(object):
                                map_change_threshold=10.0,
                                size_change_threshold=5.0)
 
-        # Wait for supervisor component to finish.
-        # Timeout and other criteria can also terminate the supervisor.
+        # TODO check if all components launched properly
+
+        # Wait for the supervisor component to finish.
         print("execute_run: Waiting for supervisor to finish")
         self.supervisor.wait_to_finish()
         print("execute_run: supervisor has shutdown")
@@ -100,13 +113,49 @@ class BenchmarkRun(object):
         print("execute_run: Shutdown completed")
 
         generate_all(self.run_output_folder, self.metric_evaluator_exec_path)
+        print("execute_run: metrics computation completed")
 
 
 if __name__ == '__main__':
-    for i in range(10):
-        r = BenchmarkRun(run_output_folder=path.expanduser("~/tmp/run_{run_number}/".format(run_number=i)),
-                         stage_world_file=path.expanduser("~/ds/performance_modelling/airlab/airlab.world"),
-                         gmapping_configuration_file=path.expanduser("~/w/catkin_ws/src/performance_modelling/config/components/gmapping_1.yaml"),
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
+                                     description='Runs slam benchmark')
+    parser.add_argument('-e', dest='environment_dataset_folder',
+                        help='Dataset folder containg the stage environment.world file.',
+                        default=path.expanduser("~/ds/performance_modelling/airlab/"),
+                        required=False)
+    parser.add_argument('-c', dest='components_configuration_folder',
+                        help='Folder containing the configuration for each component.',
+                        default=path.expanduser("~/w/catkin_ws/src/performance_modelling/config/components/"),
+                        required=False)
+    parser.add_argument('-r', dest='base_run_folder',
+                        help='Folder in which the result of each run will be placed.',
+                        default=path.expanduser("~/ds/performance_modelling_output/test/"),
+                        required=False)
+    parser.add_argument('-n', '--num-runs', dest='num_runs',
+                        help='Number of runs to be executed.',
+                        default=1,
+                        required=False)
+
+    args = parser.parse_args()
+
+    if not path.exists(args.base_run_folder):
+        os.makedirs(args.base_run_folder)
+
+    for _ in range(args.num_runs):
+
+        i = 0
+        run_folder = path.join(args.base_run_folder, "run_{run_number}".format(run_number=i))
+        while path.exists(run_folder):
+            i += 1
+            run_folder = path.join(args.base_run_folder, "run_{run_number}".format(run_number=i))
+
+        r = BenchmarkRun(run_output_folder=run_folder,
+                         stage_world_file=path.join(args.environment_dataset_folder, "environment.world"),
+                         gmapping_configuration_file=path.join(args.components_configuration_folder, "gmapping/gmapping_1.yaml"),
+                         local_planner_configuration_file=path.join(args.components_configuration_folder, "move_base/local_planner_1.yaml"),
+                         global_planner_configuration_file=path.join(args.components_configuration_folder, "move_base/global_planner_1.yaml"),
                          headless=False)
 
         r.execute_run()
+
+    print("benchmark: all runs completed")
