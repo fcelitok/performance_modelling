@@ -2,20 +2,19 @@
 
 from __future__ import print_function
 
-import argparse
-import math
-import numpy as np
-import random
-import os
-import sys
-from os import path
-from scipy.stats import t
-from subprocess import Popen
-
 import rosbag
+import roslib
+import roslib.packages
 import tf
 import tf.transformations
 
+import os
+from os import path
+from subprocess import Popen
+import random
+import math
+import numpy as np
+from scipy.stats import t
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -56,39 +55,42 @@ def write_ground_truth(bag_file_path, output_file_path):
     ground_truth.close()
 
 
-def generate_relations_o_and_re(run_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, seconds=0.5, alpha=0.99, max_error=0.02, skip_ordered_recomputation=False):
+def metric_evaluator(exec_path, poses_path, relations_path, weights, errors_path, unsorted_errors_path=None):
+    if unsorted_errors_path is None:
+        p = Popen([exec_path, "-s", poses_path, "-r", relations_path, "-w", weights, "-e", errors_path])
+    else:
+        p = Popen([exec_path, "-s", poses_path, "-r", relations_path, "-w", weights, "-e", errors_path, "-eu", unsorted_errors_path])
+    p.wait()
+
+
+def generate_relations_o_and_re(run_output_folder, results_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, seconds=0.5, alpha=0.99, max_error=0.02):
     """
-    Generates the Ordered and the Random relations files
+    Generates the ordered and the random relations files
     """
-    ground_truth_dict = dict()
+
+    # Create folder structure
+    if not path.exists(results_output_folder):
+        os.makedirs(results_output_folder)
 
     if seconds == '0':
-        print("generate_relations_o_and_re: argument seconds can not be 0")
+        print("generate_relations_o_and_re: generate_relations_o_and_re: argument seconds can not be 0")
         return
 
-    ground_truth_file = open(ground_truth_file_path, "r")
-
-    # builds dictionary with all the ground truth
-    for line in ground_truth_file:
-        time, x, y, theta = line.split(" ")
-        ground_truth_dict[float(time)] = [float(x), float(y), float(theta)]
-
-    ground_truth_file.close()
-
-    if not path.exists(path.join(run_output_folder, "Relations/Original/")):
-        os.makedirs(path.join(run_output_folder, "Relations/Original/"))
+    ground_truth_dict = dict()
+    with open(ground_truth_file_path, "r") as ground_truth_file:
+        for line in ground_truth_file:
+            time, x, y, theta = line.split(" ")
+            ground_truth_dict[float(time)] = [float(x), float(y), float(theta)]
 
     # RE
-    relations_re_file_path = path.join(run_output_folder, "Relations/Original/", "RE.relations")
+    relations_re_file_path = path.join(run_output_folder, "re.relations")
     with open(relations_re_file_path, "w") as relations_file_re:
 
         if len(ground_truth_dict.keys()) == 0:
             return
 
         n_samples = 500
-        i = 0
-
-        while i < n_samples:
+        for _ in range(n_samples):
             first_stamp = float(random.choice(ground_truth_dict.keys()))
             second_stamp = float(random.choice(ground_truth_dict.keys()))
             if first_stamp > second_stamp:
@@ -106,15 +108,16 @@ def generate_relations_o_and_re(run_output_folder, base_link_poses_file_path, gr
 
             relations_file_re.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
 
-            i += 1
+    # Run the metric evaluator on this relations file, read the sample standard deviation and exploit it to rebuild a better sample
 
-    # now we invoke the metric evaluator on this relations file, we read the sample standard
-    # deviation and we exploit it to rebuild a better sample
+    # Compute translational sample size
+    summary_t_file_path = path.join(results_output_folder, "summary_t.error")
+    metric_evaluator(exec_path=metric_evaluator_exec_path,
+                     poses_path=base_link_poses_file_path,
+                     relations_path=relations_re_file_path,
+                     weights="{1.0,1.0,1.0,0.0,0.0,0.0}",
+                     errors_path=summary_t_file_path)
 
-    # compute translational sample size
-    summary_t_file_path = path.join(run_output_folder, "summaryT.error")
-    p1 = Popen([metric_evaluator_exec_path, "-s", base_link_poses_file_path, "-r", relations_re_file_path, "-w", "{1.0,1.0,1.0,0.0,0.0,0.0}", "-e", summary_t_file_path])
-    p1.wait()
     error_file = open(summary_t_file_path, "r")
     content = error_file.readlines()
     words = content[1].split(", ")
@@ -122,12 +125,16 @@ def generate_relations_o_and_re(run_output_folder, base_link_poses_file_path, gr
     var = math.pow(std, 2)
     z_a_2 = t.ppf(alpha, n_samples - 1)
     delta = max_error
-    n_samples_t = math.pow(z_a_2, 2) * var / math.pow(delta, 2)
+    n_samples_t = int(math.pow(z_a_2, 2) * var / math.pow(delta, 2))
 
-    # compute rotational sample size
-    summary_r_file_path = path.join(run_output_folder, "summaryR.error")
-    p1 = Popen([metric_evaluator_exec_path, "-s", base_link_poses_file_path, "-r", relations_re_file_path, "-w", "{0.0,0.0,0.0,1.0,1.0,1.0}", "-e", summary_r_file_path])
-    p1.wait()
+    # Compute rotational sample size
+    summary_r_file_path = path.join(results_output_folder, "summary_r.error")
+    metric_evaluator(exec_path=metric_evaluator_exec_path,
+                     poses_path=base_link_poses_file_path,
+                     relations_path=relations_re_file_path,
+                     weights="{0.0,0.0,0.0,1.0,1.0,1.0}",
+                     errors_path=summary_r_file_path)
+
     error_file = open(summary_r_file_path, "r")
     content = error_file.readlines()
     words = content[1].split(", ")
@@ -135,93 +142,83 @@ def generate_relations_o_and_re(run_output_folder, base_link_poses_file_path, gr
     var = math.pow(std, 2)
     z_a_2 = t.ppf(alpha, n_samples - 1)
     delta = max_error
-    n_samples_r = math.pow(z_a_2, 2) * var / math.pow(delta, 2)
+    n_samples_r = int(math.pow(z_a_2, 2) * var / math.pow(delta, 2))
 
-    # select the biggest of the two
+    # Select the biggest of the two
     n_samples = max(n_samples_t, n_samples_r)
-    print(n_samples_t)
-    print(n_samples_r)
-    print(n_samples)
 
-    relations_file_re = open(relations_re_file_path, "w")
+    with open(relations_re_file_path, "w") as relations_file_re:
+        for _ in range(n_samples):
+            first_stamp = float(random.choice(ground_truth_dict.keys()))
+            second_stamp = float(random.choice(ground_truth_dict.keys()))
+            if first_stamp > second_stamp:
+                temp = first_stamp
+                first_stamp = second_stamp
+                second_stamp = temp
+            first_pos = ground_truth_dict[first_stamp]
+            second_pos = ground_truth_dict[second_stamp]
 
-    i = 0
-    while i < n_samples:
-        first_stamp = float(random.choice(ground_truth_dict.keys()))
-        second_stamp = float(random.choice(ground_truth_dict.keys()))
-        if first_stamp > second_stamp:
-            temp = first_stamp
-            first_stamp = second_stamp
-            second_stamp = temp
-        first_pos = ground_truth_dict[first_stamp]
-        second_pos = ground_truth_dict[second_stamp]
+            rel = get_matrix_diff(first_pos, second_pos)
+            x = rel[0, 3]
+            y = rel[1, 3]
+            theta = math.atan2(rel[1, 0], rel[0, 0])
 
-        rel = get_matrix_diff(first_pos, second_pos)
+            relations_file_re.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
 
-        x = rel[0, 3]
-        y = rel[1, 3]
-        theta = math.atan2(rel[1, 0], rel[0, 0])
+    metric_evaluator(exec_path=metric_evaluator_exec_path,
+                     poses_path=base_link_poses_file_path,
+                     relations_path=relations_re_file_path,
+                     weights="{1.0,1.0,1.0,0.0,0.0,0.0}",
+                     errors_path=path.join(results_output_folder, "re_t.errors"),
+                     unsorted_errors_path=path.join(results_output_folder, "re_t_unsorted.errors"))
 
-        relations_file_re.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
-
-        i += 1
-
-    relations_file_re.close()
-
-    if not path.exists(path.join(run_output_folder, "Errors/Original/RE/")):
-        os.makedirs(path.join(run_output_folder, "Errors/Original/RE/"))
-
-    metric_evaluator_t_errors_path = path.join(run_output_folder, "Errors/Original/RE/T.errors")
-    metric_evaluator_t_unsorted_errors_path = path.join(run_output_folder, "Errors/Original/RE/T-unsorted.errors")
-    p2 = Popen([metric_evaluator_exec_path, "-s", base_link_poses_file_path, "-r", relations_re_file_path, "-w", "{1.0,1.0,1.0,0.0,0.0,0.0}", "-e", metric_evaluator_t_errors_path, "-eu", metric_evaluator_t_unsorted_errors_path])
-    p2.wait()
-
-    metric_evaluator_r_errors_path = path.join(run_output_folder, "Errors/Original/RE/R.errors")
-    metric_evaluator_r_unsorted_output_path = path.join(run_output_folder, "Errors/Original/RE/R-unsorted.errors")
-    p3 = Popen([metric_evaluator_exec_path, "-s", base_link_poses_file_path, "-r", relations_re_file_path, "-w", "{0.0,0.0,0.0,1.0,1.0,1.0}", "-e", metric_evaluator_r_errors_path, "-eu", metric_evaluator_r_unsorted_output_path])
-    p3.wait()
+    metric_evaluator(exec_path=metric_evaluator_exec_path,
+                     poses_path=base_link_poses_file_path,
+                     relations_path=relations_re_file_path,
+                     weights="{0.0,0.0,0.0,1.0,1.0,1.0}",
+                     errors_path=path.join(results_output_folder, "re_r.errors"),
+                     unsorted_errors_path=path.join(results_output_folder, "re_r_unsorted.errors"))
 
     # ORDERED
-    if not skip_ordered_recomputation:
-        ordered_relations_file_path = path.join(run_output_folder, "Relations/Original/", "Ordered.relations")
-        relations_file_ordered = open(ordered_relations_file_path, "w")
+    ordered_relations_file_path = path.join(run_output_folder, "ordered.relations")
+    relations_file_ordered = open(ordered_relations_file_path, "w")
 
-        ground_truth_sorted_indices = sorted(ground_truth_dict)
+    ground_truth_sorted_indices = sorted(ground_truth_dict)
 
-        idx = 1
-        idx_delta = 10
-        first_stamp = ground_truth_sorted_indices[idx]
-        while idx + idx_delta < len(ground_truth_sorted_indices):
-            second_stamp = ground_truth_sorted_indices[idx + idx_delta]
-            if first_stamp in ground_truth_dict.keys():
-                first_pos = ground_truth_dict[first_stamp]
-                if second_stamp in ground_truth_dict.keys():
-                    second_pos = ground_truth_dict[second_stamp]
-                    rel = get_matrix_diff(first_pos, second_pos)
+    idx = 1
+    idx_delta = 10
+    first_stamp = ground_truth_sorted_indices[idx]
+    while idx + idx_delta < len(ground_truth_sorted_indices):
+        second_stamp = ground_truth_sorted_indices[idx + idx_delta]
+        if first_stamp in ground_truth_dict.keys():
+            first_pos = ground_truth_dict[first_stamp]
+            if second_stamp in ground_truth_dict.keys():
+                second_pos = ground_truth_dict[second_stamp]
+                rel = get_matrix_diff(first_pos, second_pos)
+                x = rel[0, 3]
+                y = rel[1, 3]
+                theta = math.atan2(rel[1, 0], rel[0, 0])
 
-                    x = rel[0, 3]
-                    y = rel[1, 3]
-                    theta = math.atan2(rel[1, 0], rel[0, 0])
+                relations_file_ordered.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
 
-                    relations_file_ordered.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
+        first_stamp = second_stamp
+        idx += idx_delta
 
-            first_stamp = second_stamp
-            idx += idx_delta
+    relations_file_ordered.close()
 
-        relations_file_ordered.close()
+    metric_evaluator(exec_path=metric_evaluator_exec_path,
+                     poses_path=base_link_poses_file_path,
+                     relations_path=ordered_relations_file_path,
+                     weights="{1.0,1.0,1.0,0.0,0.0,0.0}",
+                     errors_path=path.join(results_output_folder, "ordered_t.errors"),
+                     unsorted_errors_path=path.join(results_output_folder, "ordered_t_unsorted.errors"))
 
-        if not path.exists(path.join(run_output_folder, "Errors/Original/Ordered/")):
-            os.makedirs(path.join(run_output_folder, "Errors/Original/Ordered/"))
-
-        metric_evaluator_t_errors_path = path.join(run_output_folder, "Errors/Original/Ordered/T.errors")
-        metric_evaluator_t_unsorted_errors_path = path.join(run_output_folder, "Errors/Original/Ordered/T-unsorted.errors")
-        p4 = Popen([metric_evaluator_exec_path, "-s", base_link_poses_file_path, "-r", ordered_relations_file_path, "-w", "{1.0,1.0,1.0,0.0,0.0,0.0}", "-e", metric_evaluator_t_errors_path, "-eu", metric_evaluator_t_unsorted_errors_path])
-        p4.wait()
-
-        metric_evaluator_r_errors_path = path.join(run_output_folder, "Errors/Original/Ordered/R.errors")
-        metric_evaluator_r_unsorted_errors_path = path.join(run_output_folder, "Errors/Original/Ordered/R-unsorted.errors")
-        p5 = Popen([metric_evaluator_exec_path, "-s", base_link_poses_file_path, "-r", ordered_relations_file_path, "-w", "{0.0,0.0,0.0,1.0,1.0,1.0}", "-e", metric_evaluator_r_errors_path, "-eu", metric_evaluator_r_unsorted_errors_path])
-        p5.wait()
+    metric_evaluator(exec_path=metric_evaluator_exec_path,
+                     poses_path=base_link_poses_file_path,
+                     relations_path=ordered_relations_file_path,
+                     weights="{0.0,0.0,0.0,1.0,1.0,1.0}",
+                     errors_path=path.join(results_output_folder, "ordered_r.errors"),
+                     unsorted_errors_path=path.join(results_output_folder, "ordered_r_unsorted.errors"))
 
 
 def get_matrix_diff(p1, p2):
@@ -261,89 +258,33 @@ def get_matrix_diff(p1, p2):
     return m1.I * m2
 
 
-def save_trajectory_plot(base_link_poses_path, ground_truth_poses_path, figure_output_path):
+def compute_localization_metrics(run_output_folder):
     """
-    Creates a figure with the trajectories slam and ground truth
-    """
-    base_link_poses = open(base_link_poses_path, 'r')
-
-    x = []
-    y = []
-
-    for line in base_link_poses:
-        words = line.split(" ")
-        if len(words) != 9:
-            continue
-        x.append(float(words[5]))
-        y.append(float(words[6]))
-
-    base_link_poses.close()
-
-    ground_truth_poses = open(ground_truth_poses_path, 'r')
-
-    x_gt = []
-    y_gt = []
-
-    for line in ground_truth_poses:
-        words = line.split(" ")
-        if len(words) != 4:
-            continue
-        x_gt.append(float(words[1]))
-        y_gt.append(float(words[2]))
-
-    ground_truth_poses.close()
-
-    fig, ax = plt.subplots()
-    ax.cla()
-    ax.plot(x, y, 'r', x_gt, y_gt, 'b')
-    fig.savefig(figure_output_path)
-    plt.close(fig)
-
-
-def generate_all(run_output_folder, metric_evaluator_exec_path, skip_ground_truth_conversion=False, skip_ordered_recomputation=False):
-    """
-    Given a folder path if there is a .bag file and an Out.log file generates Relations, errors and trajectories
+    Given a run folder path, compute relation files and SLAM metric results
     """
     bag_file_path = path.join(run_output_folder, "odom_tf_ground_truth.bag")
     base_link_poses_path = path.join(run_output_folder, "base_link_poses")
     ground_truth_poses_path = path.join(run_output_folder, "ground_truth_poses")
+    metric_results_path = path.join(run_output_folder, "metric_results")
 
-    if not skip_ground_truth_conversion:
-        if path.isfile(bag_file_path):
-            write_ground_truth(bag_file_path, ground_truth_poses_path)
-        else:
-            print("generate_all: bag file not found {}".format(bag_file_path))
-
-    if path.isfile(base_link_poses_path):
-        generate_relations_o_and_re(run_output_folder, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path, skip_ordered_recomputation=skip_ordered_recomputation)
-        save_trajectory_plot(base_link_poses_path, ground_truth_poses_path, path.join(run_output_folder, "trajectories.png"))
-        save_trajectory_plot(base_link_poses_path, ground_truth_poses_path, path.join(run_output_folder, "trajectories.svg"))
-    else:
-        print("generate_all: base_link_transforms file not found {}".format(base_link_poses_path))
-
-    # writeText(run_output_folder)
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
-                                     description='Given the directory of an individual output run, this tool generates all the support files that are necessary for the RPPF to actually train the models and perform predictions. More specifically:\n\n\t1. If the second (optional) parameter is set to True, it converts the .bag ground truth trajectory data into a .log ground truth trajectory data. Otherwise, the .log file is assumed to be already present and the conversion is skipped;\n\t2. It creates a Relations folder and generates both the ordered and randomly sampled relations files;\n\t3. It invokes the Freiburg Metric Evaluator tool on the generated relations, storing the corresponding error files in an Error folder;\n\t4. It plots a trajectories.png file overlaying the ground truth trajectory (in green) with the estimated SLAM trajectory (in red);\n\t5. It uses the last available map snapshot and the freshly computed mean translation error from the randomly sampled relations to generate an overlayed errorMap.png file.\n\nUnder normal conditions, there is no need to manually execute this component, as it is automatically invoked by launch.py at the end of each exploration run. However, it can also be executed manually, for instance to compute the relations associated with existing real world datasets (e.g. the RAWSEEDS Bicocca indoor datasets).')
-    parser.add_argument('folder_of_individual_output_run',
-                        help='the folder that contains the output exploration data of an individual run')
-    parser.add_argument('-s', '--skip_ground_truth_conversion', action='store_true',
-                        help='skips the conversion of the ground truth data from the bag file to the log file and forces the re-usage of the existing ground truth log file; if the ground truth log file does not exist, the program will crash')
-    args = parser.parse_args()
-
-    # Find the metric_evaluator executable
-    import roslib.packages
+    # Find the metricEvaluator executable
     metric_evaluator_package_name = 'performance_modelling'
     metric_evaluator_exec_name = 'metricEvaluator'
     metric_evaluator_resources_list = roslib.packages.find_resource(metric_evaluator_package_name, metric_evaluator_exec_name)
     if len(metric_evaluator_resources_list) > 1:
         print("Multiple files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
-        sys.exit(-1)
+        return
     elif len(metric_evaluator_resources_list) == 0:
         print("No files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
-        sys.exit(-1)
-    _metric_evaluator_exec_path = metric_evaluator_resources_list[0]
+        return
+    metric_evaluator_exec_path = metric_evaluator_resources_list[0]
 
-    generate_all(args.folder_of_individual_output_run, metric_evaluator_exec_path=_metric_evaluator_exec_path, skip_ground_truth_conversion=args.skip_ground_truth_conversion)  # TODO update arguments or get rid of this
+    if path.isfile(bag_file_path):
+        write_ground_truth(bag_file_path, ground_truth_poses_path)
+    else:
+        print("generate_all: bag file not found {}".format(bag_file_path))
+
+    if path.isfile(base_link_poses_path):
+        generate_relations_o_and_re(run_output_folder, metric_results_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
+    else:
+        print("generate_all: base_link_transforms file not found {}".format(base_link_poses_path))
