@@ -59,12 +59,9 @@ class BenchmarkRun(object):
         os.mkdir(self.run_output_folder)
         bag_file_path = path.join(self.run_output_folder, "odom_tf_ground_truth.bag")
 
-        print("execute_run: launching roscore")
-        # Launch roscore
-        roscore.launch()
-
-        print("execute_run: launching components")
         # Launch components
+        print("execute_run: launching components")
+        roscore.launch()
         rviz.launch(headless=self.headless)
         environment.launch(stage_world_file=self.stage_world_file,
                            headless=self.headless)
