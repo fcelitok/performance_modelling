@@ -2,57 +2,16 @@
 
 from __future__ import print_function
 
-import rosbag
-import roslib
-import roslib.packages
-import tf
-import tf.transformations
-
-import os
-from os import path
-from subprocess import Popen
-import random
 import math
 import numpy as np
+import os
+import random
+from os import path
 from scipy.stats import t
-import matplotlib as mpl
-mpl.use('Agg')
-import matplotlib.pyplot as plt
+from subprocess import Popen
 
-
-def write_ground_truth(bag_file_path, output_file_path):
-    """
-    Given a bag file writes out a file with the poses from topic /base_pose_ground_truth
-    """
-
-    ground_truth = open(output_file_path, "w")
-
-    first_run = True
-    displacement_x = 0
-    displacement_y = 0
-
-    for topic, msg, _ in rosbag.Bag(bag_file_path).read_messages():
-        if topic == "/base_pose_ground_truth":
-            position = msg.pose.pose.position
-            quaternion = (msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w)
-            _, _, theta = tf.transformations.euler_from_quaternion(quaternion)
-
-            if first_run:
-                displacement_x = -position.x
-                displacement_y = -position.y
-                first_run = False
-
-            ground_truth.write("{t} {x} {y} {theta}\n".format(t=msg.header.stamp.to_sec(), x=position.x + displacement_x, y=position.y + displacement_y, theta=theta))
-
-            # What the f**k was this?
-            # if str(msg.header.stamp)[:-9] == "":
-            #     ground_truth.write("0." + str(msg.header.stamp)[-9:] + " " + str(position.x + displacement_x) + " " + str(
-            #         position.y + displacement_y) + " " + str(rot[2]) + "\n")
-            # else:
-            #     ground_truth.write(str(msg.header.stamp)[:-9] + "." + str(msg.header.stamp)[-9:] + " " + str(
-            #         position.x + displacement_x) + " " + str(position.y + displacement_y) + " " + str(rot[2]) + "\n")
-
-    ground_truth.close()
+import roslib
+import roslib.packages
 
 
 def metric_evaluator(exec_path, poses_path, relations_path, weights, errors_path, unsorted_errors_path=None):
@@ -63,18 +22,11 @@ def metric_evaluator(exec_path, poses_path, relations_path, weights, errors_path
     p.wait()
 
 
-def generate_relations_o_and_re(run_output_folder, results_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, seconds=0.5, alpha=0.99, max_error=0.02):
+def compute_relations_and_metrics(run_output_folder, results_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, seconds=0.5, alpha=0.99, max_error=0.02):
     """
     Generates the ordered and the random relations files
     """
-
-    # Create folder structure
-    if not path.exists(results_output_folder):
-        os.makedirs(results_output_folder)
-
-    if seconds == '0':
-        print("generate_relations_o_and_re: generate_relations_o_and_re: argument seconds can not be 0")
-        return
+    assert(seconds == 0.5)
 
     ground_truth_dict = dict()
     with open(ground_truth_file_path, "r") as ground_truth_file:
@@ -262,10 +214,13 @@ def compute_localization_metrics(run_output_folder):
     """
     Given a run folder path, compute relation files and SLAM metric results
     """
-    bag_file_path = path.join(run_output_folder, "odom_tf_ground_truth.bag")
     base_link_poses_path = path.join(run_output_folder, "base_link_poses")
     ground_truth_poses_path = path.join(run_output_folder, "ground_truth_poses")
     metric_results_path = path.join(run_output_folder, "metric_results")
+
+    # Create folder structure
+    if not path.exists(metric_results_path):
+        os.makedirs(metric_results_path)
 
     # Find the metricEvaluator executable
     metric_evaluator_package_name = 'performance_modelling'
@@ -279,12 +234,12 @@ def compute_localization_metrics(run_output_folder):
         return
     metric_evaluator_exec_path = metric_evaluator_resources_list[0]
 
-    if path.isfile(bag_file_path):
-        write_ground_truth(bag_file_path, ground_truth_poses_path)
-    else:
-        print("generate_all: bag file not found {}".format(bag_file_path))
+    if not path.isfile(base_link_poses_path):
+        print("generate_all: base_link_poses file not found {}".format(base_link_poses_path))
+        return
 
-    if path.isfile(base_link_poses_path):
-        generate_relations_o_and_re(run_output_folder, metric_results_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
-    else:
-        print("generate_all: base_link_transforms file not found {}".format(base_link_poses_path))
+    if not path.isfile(ground_truth_poses_path):
+        print("generate_all: ground_truth_poses file not found {}".format(ground_truth_poses_path))
+        return
+
+    compute_relations_and_metrics(run_output_folder, metric_results_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
