@@ -2,10 +2,11 @@
 <launch>
 
     <arg name="configuration" />
+    <arg name="output" />
 
     <arg name="scan_topic" default="/base_scan" />
 
-    <node name="gmapping" pkg="gmapping" type="slam_gmapping" output="screen">
+    <node name="gmapping" pkg="gmapping" type="slam_gmapping" output="$(arg output)" >
         <remap from="scan" to="$(arg scan_topic)"/>
         <rosparam file="$(arg configuration)" />
     </node>

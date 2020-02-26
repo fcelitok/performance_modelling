@@ -3,11 +3,12 @@
 
     <arg name="local_planner_configuration" />
     <arg name="global_planner_configuration" />
+    <arg name="output" />
 
 	<param name="base_link" value="base_link" />
 	<param name="move_base_frame" value="map" />
 
-	<node pkg="move_base" type="move_base" respawn="true" name="move_base" output="log" clear_params="true">
+	<node pkg="move_base" type="move_base" respawn="true" name="move_base" output="$(arg output)" >
 	    <rosparam file="$(arg local_planner_configuration)" />
 	    <rosparam file="$(arg global_planner_configuration)" />
         <param name="base_global_planner" value="global_replanner/GlobalReplanner" />

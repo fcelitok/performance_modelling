@@ -2,7 +2,8 @@
 <launch>
 
     <arg name="bag_file_path" />
+    <arg name="output" />
 
-	<node name="recorder" pkg="rosbag" type="record" args="--lz4 -O $(arg bag_file_path) /base_pose_ground_truth /odom /base_scan /tf"/>
+	<node name="recorder" pkg="rosbag" type="record" args="--lz4 -O $(arg bag_file_path) /base_pose_ground_truth /odom /base_scan /tf" output="$(arg output)" />
 
 </launch>

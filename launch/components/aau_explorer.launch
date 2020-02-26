@@ -2,12 +2,13 @@
 <launch>
 
     <arg name="log_path" />
+    <arg name="output" />
 
 	<arg name="robot_name" default="turtlebot" />
     <arg name="robot_prefix" default=""/>
     <arg name="frontier_selection" default="5"/>
 
-    <node pkg="explorer" type="explorer" name="explorer" output="screen" respawn="true" clear_params="true">
+    <node pkg="explorer" type="explorer" name="explorer" respawn="true" clear_params="true" output="$(arg output)" >
 
 	    <!-- costmaps -->
 	    <param name="local_costmap/robot_base_frame" value="base_link" />

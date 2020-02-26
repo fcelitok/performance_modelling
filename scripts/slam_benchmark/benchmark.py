@@ -21,17 +21,18 @@ def backup_file_if_exists(target_path):
 
 class BenchmarkRun(object):
     def __init__(self, run_output_folder, stage_world_file, gmapping_configuration_file, headless,
-                 local_planner_configuration_file, global_planner_configuration_file):
+                 local_planner_configuration_file, global_planner_configuration_file, show_ros_info):
 
-        # Component configuration parameters
+        # component configuration parameters
         self.local_planner_configuration_file = local_planner_configuration_file
         self.global_planner_configuration_file = global_planner_configuration_file
         self.gmapping_configuration_file = gmapping_configuration_file
+        self.components_ros_output = 'screen' if show_ros_info else 'log'
 
-        # Environment parameters
+        # environment parameters
         self.stage_world_file = stage_world_file
 
-        # Run parameters
+        # run parameters
         self.run_output_folder = run_output_folder
         self.headless = headless
         self.map_steady_state_period = 60.0
@@ -62,21 +63,27 @@ class BenchmarkRun(object):
         # Launch components
         print("execute_run: launching components")
         roscore.launch()
-        rviz.launch(headless=self.headless)
+        rviz.launch(headless=self.headless,
+                    output=self.components_ros_output)
         environment.launch(stage_world_file=self.stage_world_file,
-                           headless=self.headless)
-        recorder.launch(bag_file_path=bag_file_path)
-        slam.launch(configuration=self.gmapping_configuration_file)
+                           headless=self.headless,
+                           output=self.components_ros_output)
+        recorder.launch(bag_file_path=bag_file_path,
+                        output=self.components_ros_output)
+        slam.launch(configuration=self.gmapping_configuration_file,
+                    output=self.components_ros_output)
         navigation.launch(local_planner_configuration=self.local_planner_configuration_file,
-                          global_planner_configuration=self.global_planner_configuration_file)
-        explorer.launch()
+                          global_planner_configuration=self.global_planner_configuration_file,
+                          output=self.components_ros_output)
+        explorer.launch(output=self.components_ros_output)
         self.supervisor.launch(run_timeout=self.run_timeout,
                                write_base_link_poses_period=0.01,
                                map_steady_state_period=self.map_steady_state_period,
                                map_snapshot_period=self.map_snapshot_period,
                                run_output_folder=self.run_output_folder,
                                map_change_threshold=10.0,
-                               size_change_threshold=5.0)
+                               size_change_threshold=5.0,
+                               output=self.components_ros_output)
 
         # TODO check if all components launched properly
 
@@ -129,6 +136,18 @@ if __name__ == '__main__':
                         default=1,
                         required=False)
 
+    parser.add_argument('-g', '--headless', dest='headless',
+                        help='When set the components are run with no GUI.',
+                        type=bool,
+                        default=False,
+                        required=False)
+
+    parser.add_argument('-s', '--show-ros-info', dest='show_ros_info',
+                        help='When set the component nodes are launched with output="screen".',
+                        type=bool,
+                        default=False,
+                        required=False)
+
     args = parser.parse_args()
     base_run_folder = path.expanduser(args.base_run_folder)
     environment_dataset_folder = path.expanduser(args.environment_dataset_folder)
@@ -150,7 +169,8 @@ if __name__ == '__main__':
                          gmapping_configuration_file=path.join(components_configuration_folder, "gmapping/gmapping_1.yaml"),
                          local_planner_configuration_file=path.join(components_configuration_folder, "move_base/local_planner_1.yaml"),
                          global_planner_configuration_file=path.join(components_configuration_folder, "move_base/global_planner_1.yaml"),
-                         headless=False)
+                         headless=args.headless,
+                         show_ros_info=args.show_ros_info)
 
         r.execute_run()
 

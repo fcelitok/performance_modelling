@@ -8,21 +8,22 @@ import os
 import random
 from os import path
 from scipy.stats import t
-from subprocess import Popen
+import subprocess
 
 import roslib
 import roslib.packages
 
 
-def metric_evaluator(exec_path, poses_path, relations_path, weights, errors_path, unsorted_errors_path=None):
-    if unsorted_errors_path is None:
-        p = Popen([exec_path, "-s", poses_path, "-r", relations_path, "-w", weights, "-e", errors_path])
-    else:
-        p = Popen([exec_path, "-s", poses_path, "-r", relations_path, "-w", weights, "-e", errors_path, "-eu", unsorted_errors_path])
-    p.wait()
+def metric_evaluator(exec_path, poses_path, relations_path, weights, log_path, errors_path, unsorted_errors_path=None):
+    with open(log_path, 'w') as stdout_log_file:
+        if unsorted_errors_path is None:
+            p = subprocess.Popen([exec_path, "-s", poses_path, "-r", relations_path, "-w", weights, "-e", errors_path], stdout=stdout_log_file)
+        else:
+            p = subprocess.Popen([exec_path, "-s", poses_path, "-r", relations_path, "-w", weights, "-e", errors_path, "-eu", unsorted_errors_path], stdout=stdout_log_file)
+        p.wait()
 
 
-def compute_relations_and_metrics(run_output_folder, results_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, seconds=0.5, alpha=0.99, max_error=0.02):
+def compute_relations_and_metrics(run_output_folder, results_output_folder, log_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, seconds=0.5, alpha=0.99, max_error=0.02):
     """
     Generates the ordered and the random relations files
     """
@@ -67,7 +68,8 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, base
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
-                     weights="{1.0,1.0,1.0,0.0,0.0,0.0}",
+                     weights="{1, 1, 1, 0, 0, 0}",
+                     log_path=path.join(log_output_folder, "summary_t.log"),
                      errors_path=summary_t_file_path)
 
     error_file = open(summary_t_file_path, "r")
@@ -84,7 +86,8 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, base
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
-                     weights="{0.0,0.0,0.0,1.0,1.0,1.0}",
+                     weights="{0, 0, 0, 1, 1, 1}",
+                     log_path=path.join(log_output_folder, "summary_r.log"),
                      errors_path=summary_r_file_path)
 
     error_file = open(summary_r_file_path, "r")
@@ -120,14 +123,16 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, base
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
-                     weights="{1.0,1.0,1.0,0.0,0.0,0.0}",
+                     weights="{1, 1, 1, 0, 0, 0}",
+                     log_path=path.join(log_output_folder, "re_t.log"),
                      errors_path=path.join(results_output_folder, "re_t.errors"),
                      unsorted_errors_path=path.join(results_output_folder, "re_t_unsorted.errors"))
 
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
-                     weights="{0.0,0.0,0.0,1.0,1.0,1.0}",
+                     weights="{0, 0, 0, 1, 1, 1}",
+                     log_path=path.join(log_output_folder, "re_r.log"),
                      errors_path=path.join(results_output_folder, "re_r.errors"),
                      unsorted_errors_path=path.join(results_output_folder, "re_r_unsorted.errors"))
 
@@ -161,14 +166,16 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, base
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=ordered_relations_file_path,
-                     weights="{1.0,1.0,1.0,0.0,0.0,0.0}",
+                     weights="{1, 1, 1, 0, 0, 0}",
+                     log_path=path.join(log_output_folder, "ordered_t.log"),
                      errors_path=path.join(results_output_folder, "ordered_t.errors"),
                      unsorted_errors_path=path.join(results_output_folder, "ordered_t_unsorted.errors"))
 
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=ordered_relations_file_path,
-                     weights="{0.0,0.0,0.0,1.0,1.0,1.0}",
+                     weights="{0, 0, 0, 1, 1, 1}",
+                     log_path=path.join(log_output_folder, "ordered_r.log"),
                      errors_path=path.join(results_output_folder, "ordered_r.errors"),
                      unsorted_errors_path=path.join(results_output_folder, "ordered_r_unsorted.errors"))
 
@@ -217,12 +224,25 @@ def compute_localization_metrics(run_output_folder):
     base_link_poses_path = path.join(run_output_folder, "base_link_poses")
     ground_truth_poses_path = path.join(run_output_folder, "ground_truth_poses")
     metric_results_path = path.join(run_output_folder, "metric_results")
+    log_files_path = path.join(run_output_folder, "logs")
 
-    # Create folder structure
+    # create folders structure
     if not path.exists(metric_results_path):
         os.makedirs(metric_results_path)
 
-    # Find the metricEvaluator executable
+    if not path.exists(log_files_path):
+        os.makedirs(log_files_path)
+
+    # check required files exist
+    if not path.isfile(base_link_poses_path):
+        print("compute_localization_metrics: base_link_poses file not found {}".format(base_link_poses_path))
+        return
+
+    if not path.isfile(ground_truth_poses_path):
+        print("compute_localization_metrics: ground_truth_poses file not found {}".format(ground_truth_poses_path))
+        return
+
+    # find the metricEvaluator executable
     metric_evaluator_package_name = 'performance_modelling'
     metric_evaluator_exec_name = 'metricEvaluator'
     metric_evaluator_resources_list = roslib.packages.find_resource(metric_evaluator_package_name, metric_evaluator_exec_name)
@@ -234,12 +254,4 @@ def compute_localization_metrics(run_output_folder):
         return
     metric_evaluator_exec_path = metric_evaluator_resources_list[0]
 
-    if not path.isfile(base_link_poses_path):
-        print("generate_all: base_link_poses file not found {}".format(base_link_poses_path))
-        return
-
-    if not path.isfile(ground_truth_poses_path):
-        print("generate_all: ground_truth_poses file not found {}".format(ground_truth_poses_path))
-        return
-
-    compute_relations_and_metrics(run_output_folder, metric_results_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
+    compute_relations_and_metrics(run_output_folder, metric_results_path, log_files_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
