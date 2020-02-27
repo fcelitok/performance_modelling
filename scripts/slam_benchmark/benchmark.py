@@ -139,14 +139,12 @@ if __name__ == '__main__':
 
     parser.add_argument('-g', '--headless', dest='headless',
                         help='When set the components are run with no GUI.',
-                        type=bool,
-                        default=False,
+                        action='store_true',
                         required=False)
 
     parser.add_argument('-s', '--show-ros-info', dest='show_ros_info',
                         help='When set the component nodes are launched with output="screen".',
-                        type=bool,
-                        default=False,
+                        action='store_true',
                         required=False)
 
     args = parser.parse_args()
