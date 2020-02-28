@@ -105,7 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('-c', dest='components_configuration_folder',
                         help='Folder containing the configuration for each component.',
                         type=str,
-                        default="~/w/catkin_ws/src/performance_modelling/config/components/",
+                        default="~/w/catkin_ws/src/performance_modelling/config/component_configurations/",
                         required=False)
 
     parser.add_argument('-r', dest='base_run_folder',
