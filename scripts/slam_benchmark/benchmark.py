@@ -17,7 +17,7 @@ from visualisation import save_trajectories_plot
 
 
 class BenchmarkRun(object):
-    def __init__(self, run_output_folder, show_ros_info, headless, stage_world_file, component_configuration_files, supervisor_configuration_file):
+    def __init__(self, run_output_folder, show_ros_info, headless, stage_dataset_folder, component_configuration_files, supervisor_configuration_file):
 
         # components configuration parameters
         self.move_base_configuration_file = component_configuration_files['move_base']
@@ -26,12 +26,12 @@ class BenchmarkRun(object):
         self.supervisor_configuration_file = supervisor_configuration_file
 
         # environment parameters
-        self.stage_world_file = stage_world_file
+        self.stage_world_file = path.join(stage_dataset_folder, "environment.world")
 
         # run parameters
-        self.headless = headless
-        self.components_ros_output = 'screen' if show_ros_info else 'log'
         self.run_output_folder = run_output_folder
+        self.components_ros_output = 'screen' if show_ros_info else 'log'
+        self.headless = headless
 
     def execute_run(self):
         # prepare folder structure
@@ -99,7 +99,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', dest='environment_dataset_folder',
                         help='Dataset folder containg the stage environment.world file.',
                         type=str,
-                        default="~/ds/performance_modelling/airlab/",
+                        default="~/ds/performance_modelling_datasets/airlab/",
                         required=False)
 
     parser.add_argument('-c', dest='benchmark_configuration',
@@ -172,8 +172,8 @@ if __name__ == '__main__':
     print_info("number of runs per combination: {}".format(args.num_runs))
     print_info("total number of runs: {}".format(args.num_runs * num_combinations))
 
-    for components_configurations in configuration_combinations_dicts:
-        for _ in range(args.num_runs):
+    for _ in range(args.num_runs):
+        for components_configurations in configuration_combinations_dicts:
 
             # find an available run folder path
             i = 0
@@ -187,7 +187,7 @@ if __name__ == '__main__':
             r = BenchmarkRun(run_output_folder=run_folder,
                              show_ros_info=args.show_ros_info,
                              headless=args.headless,
-                             stage_world_file=path.join(environment_dataset_folder, "environment.world"),
+                             stage_dataset_folder=environment_dataset_folder,
                              component_configuration_files=components_configurations,
                              supervisor_configuration_file=supervisor_configuration)
 
