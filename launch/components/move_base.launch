@@ -4,8 +4,8 @@
     <arg name="configuration" />
     <arg name="output" />
 
-	<node pkg="move_base" type="move_base" respawn="true" name="move_base" output="$(arg output)" >
-	    <rosparam file="$(arg configuration)" />
-	</node>
+    <node pkg="move_base" type="move_base" respawn="true" name="move_base" output="$(arg output)" >
+        <rosparam file="$(arg configuration)" />
+    </node>
 
 </launch>
