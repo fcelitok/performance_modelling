@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 
 from __future__ import print_function
 
@@ -7,107 +8,89 @@ import os
 from os import path
 
 from performance_modelling_ros import Component
+from performance_modelling_ros.utils import backup_file_if_exists, print_info
 from compute_metrics import compute_localization_metrics
 from visualisation import save_trajectories_plot
 
 
-def backup_file_if_exists(target_path):
-    if path.exists(target_path):
-        backup_path = path.abspath(target_path) + '.backup'
-        backup_file_if_exists(backup_path)
-        print("backup_file_if_exists: {} -> {}".format(target_path, backup_path))
-        os.rename(target_path, backup_path)
-
-
 class BenchmarkRun(object):
-    def __init__(self, run_output_folder, stage_world_file, gmapping_configuration_file, headless,
-                 local_planner_configuration_file, global_planner_configuration_file, show_ros_info):
+    def __init__(self, run_output_folder, show_ros_info, headless, stage_world_file, component_configuration_files, supervisor_configuration_file):
 
-        # component configuration parameters
-        self.local_planner_configuration_file = local_planner_configuration_file
-        self.global_planner_configuration_file = global_planner_configuration_file
-        self.gmapping_configuration_file = gmapping_configuration_file
-        self.components_ros_output = 'screen' if show_ros_info else 'log'
+        # components configuration parameters
+        self.move_base_configuration_file = component_configuration_files['move_base']
+        self.gmapping_configuration_file = component_configuration_files['gmapping']
+        self.explore_lite_configuration_file = component_configuration_files['explore_lite']
+        self.supervisor_configuration_file = supervisor_configuration_file
 
         # environment parameters
         self.stage_world_file = stage_world_file
 
         # run parameters
-        self.run_output_folder = run_output_folder
         self.headless = headless
-        self.map_steady_state_period = 60.0
-        self.map_snapshot_period = 5.0
-        self.run_timeout = 10800.0
+        self.components_ros_output = 'screen' if show_ros_info else 'log'
+        self.run_output_folder = run_output_folder
 
         # run variables
-        self.map_snapshot_count = 0
-        self.map_saver = None
         self.supervisor = None
 
     def execute_run(self):
-        components_pkg = 'performance_modelling'
-        roscore = Component('roscore', components_pkg, 'roscore.launch')
-        rviz = Component('rviz', components_pkg, 'rviz.launch')
-        environment = Component('stage', components_pkg, 'stage.launch')
-        recorder = Component('recorder', components_pkg, 'rosbag_recorder.launch')
-        slam = Component('gmapping', components_pkg, 'gmapping.launch')
-        navigation = Component('move_base', components_pkg, 'move_base.launch')
-        explorer = Component('explorer', components_pkg, 'lite_explorer.launch')
-        self.supervisor = Component('supervisor', 'slam_benchmark_supervisor', 'supervisor.launch')
-
         # prepare folder structure
         backup_file_if_exists(self.run_output_folder)
         os.mkdir(self.run_output_folder)
         bag_file_path = path.join(self.run_output_folder, "odom_tf_ground_truth.bag")
 
+        # components parameters
+        Component.common_parameters = {'headless': self.headless, 'output': self.components_ros_output}
+        environment_params = {'stage_world_file': self.stage_world_file}
+        recorder_params = {'bag_file_path': bag_file_path}
+        slam_params = {'configuration': self.gmapping_configuration_file}
+        explorer_params = {'configuration': self.explore_lite_configuration_file}
+        navigation_params = {'configuration': self.move_base_configuration_file}
+        supervisor_params = {'run_output_folder': self.run_output_folder, 'configuration': self.supervisor_configuration_file}
+
+        # declare components
+        roscore = Component('roscore', 'performance_modelling', 'roscore.launch')
+        rviz = Component('rviz', 'performance_modelling', 'rviz.launch')
+        environment = Component('stage', 'performance_modelling', 'stage.launch', environment_params)
+        recorder = Component('recorder', 'performance_modelling', 'rosbag_recorder.launch', recorder_params)
+        slam = Component('gmapping', 'performance_modelling', 'gmapping.launch', slam_params)
+        navigation = Component('move_base', 'performance_modelling', 'move_base.launch', navigation_params)
+        explorer = Component('explore_lite', 'performance_modelling', 'explore_lite.launch', explorer_params)
+        self.supervisor = Component('supervisor', 'slam_benchmark_supervisor', 'supervisor.launch', supervisor_params)
+
         # launch components
-        print("execute_run: launching components")
+        print_info("execute_run: launching components")
         roscore.launch()
-        rviz.launch(headless=self.headless,
-                    output=self.components_ros_output)
-        environment.launch(stage_world_file=self.stage_world_file,
-                           headless=self.headless,
-                           output=self.components_ros_output)
-        recorder.launch(bag_file_path=bag_file_path,
-                        output=self.components_ros_output)
-        slam.launch(configuration=self.gmapping_configuration_file,
-                    output=self.components_ros_output)
-        navigation.launch(local_planner_configuration=self.local_planner_configuration_file,
-                          global_planner_configuration=self.global_planner_configuration_file,
-                          output=self.components_ros_output)
-        explorer.launch(output=self.components_ros_output)
-        self.supervisor.launch(run_output_folder=self.run_output_folder,
-                               run_timeout=self.run_timeout,
-                               map_steady_state_period=self.map_steady_state_period,
-                               map_snapshot_period=self.map_snapshot_period,
-                               map_change_threshold=10.0,
-                               map_size_change_threshold=5.0,
-                               map_occupied_threshold=65,
-                               map_free_threshold=25,
-                               write_base_link_poses_period=0.1)
+        rviz.launch()
+        environment.launch()
+        recorder.launch()
+        slam.launch()
+        navigation.launch()
+        explorer.launch()
+        self.supervisor.launch()
 
         # TODO check if all components launched properly
 
-        # wait for the supervisor component to finish.
-        print("execute_run: waiting for supervisor to finish")
+        # wait for the supervisor component to finish
+        print_info("execute_run: waiting for supervisor to finish")
         self.supervisor.wait_to_finish()
-        print("execute_run: supervisor has shutdown")
+        print_info("execute_run: supervisor has shutdown")
 
         # shutdown remaining components
-        rviz.shutdown()
         explorer.shutdown()
         navigation.shutdown()
         slam.shutdown()
         recorder.shutdown()
         environment.shutdown()
+        rviz.shutdown()
         roscore.shutdown()
-        print("execute_run: components shutdown completed")
+        print_info("execute_run: components shutdown completed")
 
         compute_localization_metrics(self.run_output_folder)
-        print("execute_run: metrics computation completed")
+        print_info("execute_run: metrics computation completed")
 
         save_trajectories_plot(self.run_output_folder)
-        print("execute_run: saved visualisation files")
+        print_info("execute_run: saved visualisation files")
 
 
 if __name__ == '__main__':
@@ -163,14 +146,22 @@ if __name__ == '__main__':
             i += 1
             run_folder = path.join(base_run_folder, "run_{run_number}".format(run_number=i))
 
+        component_configurations = {
+            'gmapping': path.join(components_configuration_folder, "gmapping/gmapping_1.yaml"),
+            'move_base': path.join(components_configuration_folder, "move_base/move_base_1.yaml"),
+            'explore_lite': path.join(components_configuration_folder, "explore_lite/explore_lite_1.yaml"),
+        }
+
+        supervisor_configuration = path.join(components_configuration_folder, "slam_benchmark_supervisor/slam_benchmark_supervisor.yaml")
+
         r = BenchmarkRun(run_output_folder=run_folder,
-                         stage_world_file=path.join(environment_dataset_folder, "environment.world"),
-                         gmapping_configuration_file=path.join(components_configuration_folder, "gmapping/gmapping_1.yaml"),
-                         local_planner_configuration_file=path.join(components_configuration_folder, "move_base/local_planner_1.yaml"),
-                         global_planner_configuration_file=path.join(components_configuration_folder, "move_base/global_planner_1.yaml"),
+                         show_ros_info=args.show_ros_info,
                          headless=args.headless,
-                         show_ros_info=args.show_ros_info)
+                         stage_world_file=path.join(environment_dataset_folder, "environment.world"),
+                         component_configuration_files=component_configurations,
+                         supervisor_configuration_file=supervisor_configuration)
 
         r.execute_run()
+        print_info("benchmark: run {run_index} completed".format(run_index=i))
 
-    print("benchmark: all runs completed")
+    print_info("benchmark: all runs completed")

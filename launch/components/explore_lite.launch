@@ -4,8 +4,8 @@
     <arg name="configuration" />
     <arg name="output" />
 
-	<node pkg="move_base" type="move_base" respawn="true" name="move_base" output="$(arg output)" >
+    <node pkg="explore_lite" type="explore" name="explorer" respawn="true" output="$(arg output)" >
 	    <rosparam file="$(arg configuration)" />
-	</node>
+    </node>
 
 </launch>
