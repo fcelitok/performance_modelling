@@ -1,6 +1,6 @@
 run_timeout: 10800.0
 map_snapshot_period: 5.0
-map_steady_state_period: 60.0
+map_steady_state_period: 300.0
 map_change_threshold: 10.0
 map_size_change_threshold: 5.0
 map_occupied_threshold: 65
