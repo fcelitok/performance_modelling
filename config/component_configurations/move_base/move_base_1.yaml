@@ -6,7 +6,6 @@ local_costmap:
     robot_base_frame: base_link
     update_frequency: 2
     publish_frequency: 0.2
-#    static_map: false  # [ WARN /move_base]: local_costmap: Pre-Hydro parameter "static_map" unused since "plugins" is provided
     rolling_window: true
     width: 6.0
     height: 6.0
@@ -64,7 +63,7 @@ controller_patience: 15.0
 
 TrajectoryPlannerROS:
     max_vel_x: 0.85
-    min_vel_x: 0.1 # set to negative with DWAPlannerROS to allow backward motion, doesn't work with TPR
+    min_vel_x: 0.05 # set to negative with DWAPlannerROS to allow backward motion, doesn't work with TPR
 #     NOTE: min_vel_x MUST be positive (cannot be zero) to work with TPR, can be negative with DWA
 #     max_vel_y: 0.0 #P3AT is a differential drive robot
 #     min_vel_y: 0.0 #P3AT is a differential drive robot
@@ -107,7 +106,6 @@ global_costmap:
     robot_base_frame: base_link
     update_frequency: 2
     publish_frequency: 0.1
-#    static_map: true  # [ WARN /move_base]: global_costmap: Pre-Hydro parameter "static_map" unused since "plugins" is provided
     transform_tolerance: 0.25
     track_unknown_space: true
     unknown_cost_value: 255
