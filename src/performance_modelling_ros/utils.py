@@ -26,3 +26,20 @@ def backup_file_if_exists(target_path):
 
 def print_info(*args):
     print(colored(' '.join(map(str, args)), 'blue', attrs=['bold']))
+
+
+def print_error(*args):
+    print(colored(' '.join(map(str, args)), 'red', attrs=['bold']))
+
+
+def print_fatal(*args):
+    text = ' '.join(map(str, args))
+    colored_text = colored(text, 'red', attrs=['bold', 'blink'])
+    b = colored('*', 'red', attrs=['bold', 'blink', 'reverse'])
+    n = len(text)
+    print(n)
+    print("{h_border}\n"
+          "{v_border} {spaces} {v_border}\n"
+          "{v_border} {text} {v_border}\n"
+          "{v_border} {spaces} {v_border}\n"
+          "{h_border}".format(h_border=b*(n+4), v_border=b, spaces=' '*n, text=colored_text))

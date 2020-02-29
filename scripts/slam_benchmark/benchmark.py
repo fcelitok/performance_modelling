@@ -3,15 +3,21 @@
 
 from __future__ import print_function
 
+import glob
 import rospkg
 import argparse
 import os
+import traceback
 import yaml
 from os import path
 import itertools
 
+import roslaunch
+import rospy
+
+from performance_modelling_ros.utils import backup_file_if_exists, print_info, print_error, print_fatal
 from performance_modelling_ros import Component
-from performance_modelling_ros.utils import backup_file_if_exists, print_info
+
 from compute_metrics import compute_localization_metrics
 from visualisation import save_trajectories_plot
 
@@ -32,8 +38,10 @@ class BenchmarkRun(object):
         self.run_output_folder = run_output_folder
         self.components_ros_output = 'screen' if show_ros_info else 'log'
         self.headless = headless
+        self.ros_has_shutdown = False
 
     def execute_run(self):
+
         # prepare folder structure
         backup_file_if_exists(self.run_output_folder)
         os.mkdir(self.run_output_folder)
@@ -58,11 +66,18 @@ class BenchmarkRun(object):
         explorer = Component('explore_lite', 'performance_modelling', 'explore_lite.launch', explorer_params)
         supervisor = Component('supervisor', 'performance_modelling', 'slam_benchmark_supervisor.launch', supervisor_params)
 
+        # launch roscore and setup a node to monitor ros
+        roscore.launch()
+        rospy.init_node("benchmark_monitor", anonymous=True)
+
         # launch components
         print_info("execute_run: launching components")
-        roscore.launch()
         rviz.launch()
         environment.launch()
+        if not rospy.get_param("/use_sim_time", False):
+            print_fatal("\n\nuse_sim_time NOT SET\n\n")
+            return
+
         recorder.launch()
         slam.launch()
         navigation.launch()
@@ -75,6 +90,10 @@ class BenchmarkRun(object):
         print_info("execute_run: waiting for supervisor to finish")
         supervisor.wait_to_finish()
         print_info("execute_run: supervisor has shutdown")
+
+        if rospy.is_shutdown():
+            print_error("supervisor finished by ros_shutdown")
+            self.ros_has_shutdown = True
 
         # shutdown remaining components
         explorer.shutdown()
@@ -97,9 +116,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description='Execute the benchmark')
 
     parser.add_argument('-e', dest='environment_dataset_folder',
-                        help='Dataset folder containg the stage environment.world file.',
+                        help='Dataset folder containg the stage environment.world file (recursively).',
                         type=str,
-                        default="~/ds/performance_modelling_datasets/airlab/",
+                        default="~/ds/performance_modelling_datasets/",
                         required=False)
 
     parser.add_argument('-c', dest='benchmark_configuration',
@@ -142,6 +161,9 @@ if __name__ == '__main__':
     if not path.exists(base_run_folder):
         os.makedirs(base_run_folder)
 
+    environment_folders = sorted(map(path.dirname, set(glob.glob(path.join(path.abspath(path.expanduser(environment_dataset_folder)), "**/*.world"))).union(set(glob.glob(path.join(path.abspath(path.expanduser(environment_dataset_folder)), "*.world"))))))
+    print_info("environments found: {}".format(len(environment_folders)))
+
     with open(benchmark_configuration, 'r') as f:
         benchmark_configuration = yaml.load(f)
 
@@ -173,25 +195,47 @@ if __name__ == '__main__':
     print_info("total number of runs: {}".format(args.num_runs * num_combinations))
 
     for _ in range(args.num_runs):
-        for components_configurations in configuration_combinations_dicts:
+        for environment_folder in environment_folders:
+            for components_configurations in configuration_combinations_dicts:
 
-            # find an available run folder path
-            i = 0
-            run_folder = path.join(base_run_folder, "run_{run_number}".format(run_number=i))
-            while path.exists(run_folder):
-                i += 1
+                # find an available run folder path
+                i = 0
                 run_folder = path.join(base_run_folder, "run_{run_number}".format(run_number=i))
+                while path.exists(run_folder):
+                    i += 1
+                    run_folder = path.join(base_run_folder, "run_{run_number}".format(run_number=i))
 
-            # instantiate and execute the run
-            print_info("benchmark: starting run {run_index}".format(run_index=i))
-            r = BenchmarkRun(run_output_folder=run_folder,
-                             show_ros_info=args.show_ros_info,
-                             headless=args.headless,
-                             stage_dataset_folder=environment_dataset_folder,
-                             component_configuration_files=components_configurations,
-                             supervisor_configuration_file=supervisor_configuration)
+                # instantiate and execute the run
+                print_info("benchmark: starting run {run_index}".format(run_index=i))
+                print_info("\tenvironment_folder:", environment_folder)
+                print_info("\tsupervisor_configuration:", supervisor_configuration)
+                print_info("\tcomponents_configurations:")
+                for k, v in components_configurations.items():
+                    print_info("\t\t{}: ...{}".format(k, v[-100:]))
 
-            r.execute_run()
-            print_info("benchmark: run {run_index} completed".format(run_index=i))
+                try:
+                    r = BenchmarkRun(run_output_folder=run_folder,
+                                     show_ros_info=args.show_ros_info,
+                                     headless=args.headless,
+                                     stage_dataset_folder=environment_folder,
+                                     component_configuration_files=components_configurations,
+                                     supervisor_configuration_file=supervisor_configuration)
 
-    print_info("benchmark: all runs completed")
+                    r.execute_run()
+
+                    if r.ros_has_shutdown:
+                        print_info("benchmark: run {run_index} interrupted".format(run_index=i))
+                        print_info("benchmark: interrupted")
+                        import sys
+                        sys.exit()
+                    else:
+                        print_info("benchmark: run {run_index} completed".format(run_index=i))
+
+                except roslaunch.RLException:
+                    print_error(traceback.format_exc())
+                except IOError:
+                    print_error(traceback.format_exc())
+                except ValueError:
+                    print_error(traceback.format_exc())
+
+    print_info("benchmark: finished")
