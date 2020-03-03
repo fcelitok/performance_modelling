@@ -10,7 +10,7 @@
 
     <param name="/use_sim_time" value="true" />
 
-    <node name="stage" pkg="stage_ros" type="stageros" required="true" args="$(arg stage_args) $(arg stage_world_file)" output="$(arg output)" >
+    <node name="stage" pkg="stage_ros_pm" type="stageros" required="true" args="$(arg stage_args) $(arg stage_world_file)" output="$(arg output)" >
         <param name="base_watchdog_timeout" value="0.3" />
     </node>
 

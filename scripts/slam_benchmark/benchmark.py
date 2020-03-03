@@ -7,6 +7,7 @@ import glob
 import rospkg
 import argparse
 import os
+import sys
 import traceback
 import yaml
 from os import path
@@ -73,7 +74,7 @@ class BenchmarkRun(object):
 
         # launch components
         print_info("execute_run: launching components")
-        rviz.launch()
+        # rviz.launch()
         environment.launch()
         if not rospy.get_param("/use_sim_time", False):
             print_fatal("use_sim_time NOT SET")
@@ -102,7 +103,7 @@ class BenchmarkRun(object):
         slam.shutdown()
         recorder.shutdown()
         environment.shutdown()
-        rviz.shutdown()
+        # rviz.shutdown()
         roscore.shutdown()
         print_info("execute_run: components shutdown completed")
 
@@ -119,7 +120,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', dest='environment_dataset_folder',
                         help='Dataset folder containg the stage environment.world file (recursively).',
                         type=str,
-                        default="~/ds/performance_modelling_all_datasets/8-1",
+                        default="~/ds/performance_modelling_few_datasets/",
                         required=False)
 
     parser.add_argument('-c', dest='benchmark_configuration',
@@ -227,13 +228,13 @@ if __name__ == '__main__':
                     if r.ros_has_shutdown:
                         print_info("benchmark: run {run_index} interrupted".format(run_index=i))
                         print_info("benchmark: interrupted")
-                        import sys
-                        sys.exit()
+                        sys.exit(0)
                     else:
                         print_info("benchmark: run {run_index} completed".format(run_index=i))
 
                 except roslaunch.RLException:
                     print_error(traceback.format_exc())
+                    sys.exit(0)
                 except IOError:
                     print_error(traceback.format_exc())
                 except ValueError:
