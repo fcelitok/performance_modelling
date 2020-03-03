@@ -17,9 +17,8 @@ import rospy
 
 from performance_modelling_ros.utils import backup_file_if_exists, print_info, print_error, print_fatal
 from performance_modelling_ros import Component
-
-from compute_metrics import compute_localization_metrics
-from visualisation import save_trajectories_plot
+from performance_modelling_ros.metrics.localization_metrics import compute_localization_metrics
+from performance_modelling_ros.visualisation.trajectory_visualisation import save_trajectories_plot
 
 
 class BenchmarkRun(object):
@@ -38,6 +37,8 @@ class BenchmarkRun(object):
         self.run_output_folder = run_output_folder
         self.components_ros_output = 'screen' if show_ros_info else 'log'
         self.headless = headless
+
+        # run variables
         self.ros_has_shutdown = False
 
     def execute_run(self):
@@ -75,7 +76,7 @@ class BenchmarkRun(object):
         rviz.launch()
         environment.launch()
         if not rospy.get_param("/use_sim_time", False):
-            print_fatal("\n\nuse_sim_time NOT SET\n\n")
+            print_fatal("use_sim_time NOT SET")
             return
 
         recorder.launch()
@@ -92,7 +93,7 @@ class BenchmarkRun(object):
         print_info("execute_run: supervisor has shutdown")
 
         if rospy.is_shutdown():
-            print_error("supervisor finished by ros_shutdown")
+            print_error("execute_run: supervisor finished by ros_shutdown")
             self.ros_has_shutdown = True
 
         # shutdown remaining components
@@ -118,7 +119,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', dest='environment_dataset_folder',
                         help='Dataset folder containg the stage environment.world file (recursively).',
                         type=str,
-                        default="~/ds/performance_modelling_datasets/",
+                        default="~/ds/performance_modelling_all_datasets/8-1",
                         required=False)
 
     parser.add_argument('-c', dest='benchmark_configuration',
