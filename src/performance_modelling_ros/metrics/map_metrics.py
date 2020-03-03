@@ -9,7 +9,7 @@ import yaml
 from PIL import Image
 from os import path
 
-from utils import print_info
+from performance_modelling_ros.utils import print_info, backup_file_if_exists
 
 
 def compute_map_metrics(run_output_folder, stage_world_folder):
@@ -22,6 +22,8 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
 
     ground_truth_map_info_file_path = path.join(stage_world_folder, "stage_world_info.yaml")
     ground_truth_map_file_path = path.join(stage_world_folder, "map_ground_truth.pgm")
+
+    map_metric_result_file_path = path.join(metric_results_path, "normalised_explored_area.yaml")
 
     # create folders structure
     if not path.exists(metric_results_path):
@@ -65,7 +67,7 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
     ground_truth_pixels = ground_truth_map.load()
     for i in range(ground_truth_map.size[0]):
         for j in range(ground_truth_map.size[1]):
-            ground_truth_free_cell_count += ground_truth_pixels[i, j] == (255, 255, 255)
+            ground_truth_free_cell_count += ground_truth_pixels[i, j] == (254, 254, 254)
             ground_truth_occupied_cell_count += ground_truth_pixels[i, j] == (0, 0, 0)
             ground_truth_unknown_cell_count += ground_truth_pixels[i, j] == (205, 205, 205)
 
@@ -125,6 +127,27 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
 
     print_info("normalised explored area:", explored_area / explorable_area)
 
+    yaml_dict = {
+        'result_map': {
+            'count': {
+                'free': result_free_cell_count,
+                'occupied': result_occupied_cell_count,
+                'unknown': result_unknown_cell_count,
+                'total': result_total_cell_count,
+            },
+            'area': {
+                'free': explored_area,
+                'occupied': result_occupied_cell_count * result_cell_area,
+                'unknown': result_unknown_cell_count * result_cell_area,
+                'total': result_total_cell_count * result_cell_area,
+            },
+        },
+        'normalised_explored_area': float(explored_area / explorable_area)
+    }
+    backup_file_if_exists(map_metric_result_file_path)
+    with open(map_metric_result_file_path, 'w') as yaml_file:
+        yaml.dump(yaml_dict, yaml_file, default_flow_style=False)
+
 
 if __name__ == '__main__':
-    compute_map_metrics(run_output_folder="/home/enrico/ds/performance_modelling_output/test/run_0", stage_world_folder="/home/enrico/ds/performance_modelling_all_datasets/11-0")
+    compute_map_metrics(run_output_folder="/home/enrico/ds/performance_modelling_output/test/run_23", stage_world_folder="/home/enrico/ds/performance_modelling_all_datasets/test")

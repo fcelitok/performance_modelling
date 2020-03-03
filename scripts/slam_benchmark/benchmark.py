@@ -19,6 +19,7 @@ import rospy
 from performance_modelling_ros.utils import backup_file_if_exists, print_info, print_error, print_fatal
 from performance_modelling_ros import Component
 from performance_modelling_ros.metrics.localization_metrics import compute_localization_metrics
+from performance_modelling_ros.metrics.map_metrics import compute_map_metrics
 from performance_modelling_ros.visualisation.trajectory_visualisation import save_trajectories_plot
 
 
@@ -32,6 +33,7 @@ class BenchmarkRun(object):
         self.supervisor_configuration_file = supervisor_configuration_file
 
         # environment parameters
+        self.stage_world_folder = stage_dataset_folder
         self.stage_world_file = path.join(stage_dataset_folder, "environment.world")
 
         # run parameters
@@ -74,8 +76,8 @@ class BenchmarkRun(object):
 
         # launch components
         print_info("execute_run: launching components")
-        # rviz.launch()
-        environment.launch()
+        rviz.launch()
+        environment.launch(headless=False)  # Override headless parameter TODO stage still does not run correctly in headless mode
         if not rospy.get_param("/use_sim_time", False):
             print_fatal("use_sim_time NOT SET")
             return
@@ -103,10 +105,11 @@ class BenchmarkRun(object):
         slam.shutdown()
         recorder.shutdown()
         environment.shutdown()
-        # rviz.shutdown()
+        rviz.shutdown()
         roscore.shutdown()
         print_info("execute_run: components shutdown completed")
 
+        compute_map_metrics(self.run_output_folder, self.stage_world_folder)
         compute_localization_metrics(self.run_output_folder)
         print_info("execute_run: metrics computation completed")
 
