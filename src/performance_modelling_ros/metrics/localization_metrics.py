@@ -14,6 +14,8 @@ import subprocess
 import roslib
 import roslib.packages
 
+from performance_modelling_ros.utils import print_info
+
 
 def metric_evaluator(exec_path, poses_path, relations_path, weights, log_path, errors_path, unsorted_errors_path=None):
     with open(log_path, 'w') as stdout_log_file:
@@ -24,19 +26,19 @@ def metric_evaluator(exec_path, poses_path, relations_path, weights, log_path, e
         p.wait()
 
 
-def compute_relations_and_metrics(run_output_folder, results_output_folder, log_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, seconds=0.5, alpha=0.99, max_error=0.02):
+def compute_relations_and_metrics(run_output_folder, results_output_folder, log_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, alpha=0.99, max_error=0.02):
     """
     Generates the ordered and the random relations files
     """
-    assert(seconds == 0.5)
 
     ground_truth_dict = dict()
     with open(ground_truth_file_path, "r") as ground_truth_file:
         for line in ground_truth_file:
-            time, x, y, theta = line.split(" ")
-            ground_truth_dict[float(time)] = [float(x), float(y), float(theta)]
+            time, x, y, theta = map(float, line.split(', '))
+            ground_truth_dict[time] = (x, y, theta)
 
     # RE
+    print_info("computing relations RE")
     relations_re_file_path = path.join(run_output_folder, "re.relations")
     with open(relations_re_file_path, "w") as relations_file_re:
 
@@ -48,9 +50,11 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
             first_stamp = float(random.choice(ground_truth_dict.keys()))
             second_stamp = float(random.choice(ground_truth_dict.keys()))
             if first_stamp > second_stamp:
-                temp = first_stamp
-                first_stamp = second_stamp
-                second_stamp = temp
+                first_stamp, second_stamp = second_stamp, first_stamp
+                # what year is this, 1979?
+                # temp = first_stamp
+                # first_stamp = second_stamp
+                # second_stamp = temp
             first_pos = ground_truth_dict[first_stamp]
             second_pos = ground_truth_dict[second_stamp]
 
@@ -65,6 +69,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
     # Run the metric evaluator on this relations file, read the sample standard deviation and exploit it to rebuild a better sample
 
     # Compute translational sample size
+    print_info("computing metric summary_t")
     summary_t_file_path = path.join(results_output_folder, "summary_t.error")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
@@ -83,6 +88,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
     n_samples_t = int(math.pow(z_a_2, 2) * var / math.pow(delta, 2))
 
     # Compute rotational sample size
+    print_info("computing metric summary_r")
     summary_r_file_path = path.join(results_output_folder, "summary_r.error")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
@@ -103,14 +109,17 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
     # Select the biggest of the two
     n_samples = max(n_samples_t, n_samples_r)
 
+    print_info("computing re relations with {n} samples".format(n=n_samples))
     with open(relations_re_file_path, "w") as relations_file_re:
         for _ in range(n_samples):
             first_stamp = float(random.choice(ground_truth_dict.keys()))
             second_stamp = float(random.choice(ground_truth_dict.keys()))
             if first_stamp > second_stamp:
-                temp = first_stamp
-                first_stamp = second_stamp
-                second_stamp = temp
+                first_stamp, second_stamp = second_stamp, first_stamp
+                # what year is this, 1979?
+                # temp = first_stamp
+                # first_stamp = second_stamp
+                # second_stamp = temp
             first_pos = ground_truth_dict[first_stamp]
             second_pos = ground_truth_dict[second_stamp]
 
@@ -121,6 +130,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
 
             relations_file_re.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
 
+    print_info("computing metric re_t_unsorted")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
@@ -129,6 +139,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      errors_path=path.join(results_output_folder, "re_t.csv"),
                      unsorted_errors_path=path.join(results_output_folder, "re_t_unsorted.errors"))
 
+    print_info("computing metric re_r_unsorted")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
@@ -140,8 +151,8 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
     # ORDERED
     ordered_relations_file_path = path.join(run_output_folder, "ordered.relations")
     relations_file_ordered = open(ordered_relations_file_path, "w")
-
     ground_truth_sorted_indices = sorted(ground_truth_dict)
+    print_info("computing ordered relations with {n} samples".format(n=len(ground_truth_sorted_indices)/10))
 
     idx = 1
     idx_delta = 10
@@ -164,6 +175,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
 
     relations_file_ordered.close()
 
+    print_info("computing metric ordered_t")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=ordered_relations_file_path,
@@ -172,6 +184,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      errors_path=path.join(results_output_folder, "ordered_t.csv"),
                      unsorted_errors_path=path.join(results_output_folder, "ordered_t_unsorted.errors"))
 
+    print_info("computing metric ordered_r")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=ordered_relations_file_path,

@@ -8,4 +8,5 @@ map_free_threshold: 25
 write_base_link_poses_period: 0.1
 exploration_finished_topic: /explorer/exploration_finished
 base_link_ground_truth_topic: /base_pose_ground_truth
+cmd_vel_topic: /cmd_vel
 map_topic: /map

@@ -22,7 +22,7 @@ def save_trajectories_plot(run_output_folder):
         x = list()
         y = list()
         for line in base_link_poses:
-            words = line.split(" ")
+            words = line.split(' ')
             if len(words) != 9:
                 print("save_trajectory_plot: unexpected file format for {path}".format(path=base_link_poses_path))
                 return
@@ -33,7 +33,7 @@ def save_trajectories_plot(run_output_folder):
         x_gt = list()
         y_gt = list()
         for line in ground_truth_poses:
-            words = line.split(" ")
+            words = line.split(', ')
             if len(words) != 4:
                 print("save_trajectory_plot: unexpected file format for {path}".format(path=ground_truth_poses_path))
                 return
