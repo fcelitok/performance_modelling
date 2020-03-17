@@ -51,10 +51,6 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
             second_stamp = float(random.choice(ground_truth_dict.keys()))
             if first_stamp > second_stamp:
                 first_stamp, second_stamp = second_stamp, first_stamp
-                # what year is this, 1979?
-                # temp = first_stamp
-                # first_stamp = second_stamp
-                # second_stamp = temp
             first_pos = ground_truth_dict[first_stamp]
             second_pos = ground_truth_dict[second_stamp]
 
@@ -116,10 +112,6 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
             second_stamp = float(random.choice(ground_truth_dict.keys()))
             if first_stamp > second_stamp:
                 first_stamp, second_stamp = second_stamp, first_stamp
-                # what year is this, 1979?
-                # temp = first_stamp
-                # first_stamp = second_stamp
-                # second_stamp = temp
             first_pos = ground_truth_dict[first_stamp]
             second_pos = ground_truth_dict[second_stamp]
 
