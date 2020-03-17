@@ -37,9 +37,9 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
             time, x, y, theta = map(float, line.split(', '))
             ground_truth_dict[time] = (x, y, theta)
 
-    # RE
-    print_info("computing relations RE")
-    relations_re_file_path = path.join(run_output_folder, "re.relations")
+    # random relations
+    print_info("computing random relations")
+    relations_re_file_path = path.join(run_output_folder, "re_relations")
     with open(relations_re_file_path, "w") as relations_file_re:
 
         if len(ground_truth_dict.keys()) == 0:
@@ -70,7 +70,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
 
     # Compute translational sample size
     print_info("computing metric summary_t")
-    summary_t_file_path = path.join(results_output_folder, "summary_t.error")
+    summary_t_file_path = path.join(results_output_folder, "summary_t_errors")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
@@ -89,7 +89,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
 
     # Compute rotational sample size
     print_info("computing metric summary_r")
-    summary_r_file_path = path.join(results_output_folder, "summary_r.error")
+    summary_r_file_path = path.join(results_output_folder, "summary_r_errors")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
@@ -137,7 +137,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      weights="{1, 1, 1, 0, 0, 0}",
                      log_path=path.join(log_output_folder, "re_t.log"),
                      errors_path=path.join(results_output_folder, "re_t.csv"),
-                     unsorted_errors_path=path.join(results_output_folder, "re_t_unsorted.errors"))
+                     unsorted_errors_path=path.join(results_output_folder, "re_t_unsorted_errors"))
 
     print_info("computing metric re_r_unsorted")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
@@ -146,10 +146,10 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      weights="{0, 0, 0, 1, 1, 1}",
                      log_path=path.join(log_output_folder, "re_r.log"),
                      errors_path=path.join(results_output_folder, "re_r.csv"),
-                     unsorted_errors_path=path.join(results_output_folder, "re_r_unsorted.errors"))
+                     unsorted_errors_path=path.join(results_output_folder, "re_r_unsorted_errors"))
 
-    # ORDERED
-    ordered_relations_file_path = path.join(run_output_folder, "ordered.relations")
+    # ordered relations
+    ordered_relations_file_path = path.join(run_output_folder, "ordered_relations")
     relations_file_ordered = open(ordered_relations_file_path, "w")
     ground_truth_sorted_indices = sorted(ground_truth_dict)
     print_info("computing ordered relations with {n} samples".format(n=len(ground_truth_sorted_indices)/10))
@@ -182,7 +182,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      weights="{1, 1, 1, 0, 0, 0}",
                      log_path=path.join(log_output_folder, "ordered_t.log"),
                      errors_path=path.join(results_output_folder, "ordered_t.csv"),
-                     unsorted_errors_path=path.join(results_output_folder, "ordered_t_unsorted.errors"))
+                     unsorted_errors_path=path.join(results_output_folder, "ordered_t_unsorted_errors"))
 
     print_info("computing metric ordered_r")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
@@ -191,7 +191,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      weights="{0, 0, 0, 1, 1, 1}",
                      log_path=path.join(log_output_folder, "ordered_r.log"),
                      errors_path=path.join(results_output_folder, "ordered_r.csv"),
-                     unsorted_errors_path=path.join(results_output_folder, "ordered_r_unsorted.errors"))
+                     unsorted_errors_path=path.join(results_output_folder, "ordered_r_unsorted_errors"))
 
 
 def get_matrix_diff(p1, p2):
