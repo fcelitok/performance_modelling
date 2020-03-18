@@ -7,6 +7,7 @@ import math
 import numpy as np
 import os
 import random
+from collections import deque
 from os import path
 from scipy.stats import t
 import subprocess
@@ -14,7 +15,7 @@ import subprocess
 import roslib
 import roslib.packages
 
-from performance_modelling_ros.utils import print_info
+from performance_modelling_ros.utils import print_info, print_error
 
 
 def metric_evaluator(exec_path, poses_path, relations_path, weights, log_path, errors_path, unsorted_errors_path=None):
@@ -31,24 +32,50 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
     Generates the ordered and the random relations files
     """
 
+    print_info("computing acceptable ground truth relation times")
     ground_truth_dict = dict()
     with open(ground_truth_file_path, "r") as ground_truth_file:
         for line in ground_truth_file:
             time, x, y, theta = map(float, line.split(', '))
             ground_truth_dict[time] = (x, y, theta)
+    ground_truth_times = sorted(ground_truth_dict.keys())
+    if len(ground_truth_times) < 2:
+        return
+
+    base_link_dict = dict()
+    with open(base_link_poses_file_path, "r") as base_link_file:
+        for line in base_link_file:
+            x, y, theta, time = map(float, line.split(' ')[-4:])
+            base_link_dict[time] = (x, y, theta)
+    base_link_times = deque(sorted(base_link_dict.keys()))
+    if len(base_link_times) < 2:
+        return
+
+    max_diff = 0.1
+    ground_truth_acceptable_times = list()
+    for i in ground_truth_times:
+        while len(base_link_times) > 0 and base_link_times[0] - i <= -max_diff:  # discard all gt times that are too old
+            base_link_times.popleft()
+
+        if len(base_link_times) == 0:
+            break
+
+        # once old values are discarded, either the next value is acceptable or too young
+        if base_link_times[0] - i < max_diff:  # accept the gt value if the difference is within range: -max_diff <= base_link_times[0] - i <= max_diff
+            ground_truth_acceptable_times.append(i)
 
     # random relations
     print_info("computing random relations")
     relations_re_file_path = path.join(run_output_folder, "re_relations")
     with open(relations_re_file_path, "w") as relations_file_re:
 
-        if len(ground_truth_dict.keys()) == 0:
+        if len(ground_truth_acceptable_times) == 0:
             return
 
         n_samples = 500
         for _ in range(n_samples):
-            first_stamp = float(random.choice(ground_truth_dict.keys()))
-            second_stamp = float(random.choice(ground_truth_dict.keys()))
+            first_stamp = float(random.choice(ground_truth_acceptable_times))
+            second_stamp = float(random.choice(ground_truth_acceptable_times))
             if first_stamp > second_stamp:
                 first_stamp, second_stamp = second_stamp, first_stamp
             first_pos = ground_truth_dict[first_stamp]
@@ -108,8 +135,8 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
     print_info("computing re relations with {n} samples".format(n=n_samples))
     with open(relations_re_file_path, "w") as relations_file_re:
         for _ in range(n_samples):
-            first_stamp = float(random.choice(ground_truth_dict.keys()))
-            second_stamp = float(random.choice(ground_truth_dict.keys()))
+            first_stamp = float(random.choice(ground_truth_acceptable_times))
+            second_stamp = float(random.choice(ground_truth_acceptable_times))
             if first_stamp > second_stamp:
                 first_stamp, second_stamp = second_stamp, first_stamp
             first_pos = ground_truth_dict[first_stamp]
@@ -142,30 +169,27 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
 
     # ordered relations
     ordered_relations_file_path = path.join(run_output_folder, "ordered_relations")
-    relations_file_ordered = open(ordered_relations_file_path, "w")
-    ground_truth_sorted_indices = sorted(ground_truth_dict)
-    print_info("computing ordered relations with {n} samples".format(n=len(ground_truth_sorted_indices)/10))
+    with open(ordered_relations_file_path, "w") as relations_file_ordered:
 
-    idx = 1
-    idx_delta = 10
-    first_stamp = ground_truth_sorted_indices[idx]
-    while idx + idx_delta < len(ground_truth_sorted_indices):
-        second_stamp = ground_truth_sorted_indices[idx + idx_delta]
-        if first_stamp in ground_truth_dict.keys():
+        idx_delta = len(ground_truth_acceptable_times)/n_samples
+        if idx_delta == 0:
+            print_error("len(ground_truth_acceptable_times) [{l}] < n_samples [{n}]".format(l=len(ground_truth_acceptable_times), n=n_samples))
+            idx_delta = 1
+
+        print_info("computing ordered relations with {n} samples".format(n=len(ground_truth_acceptable_times[0::idx_delta][0:-1])))
+
+        for idx, first_stamp in enumerate(ground_truth_acceptable_times[0::idx_delta][0:-1]):
+            second_stamp = ground_truth_acceptable_times[idx + idx_delta]
+
             first_pos = ground_truth_dict[first_stamp]
-            if second_stamp in ground_truth_dict.keys():
-                second_pos = ground_truth_dict[second_stamp]
-                rel = get_matrix_diff(first_pos, second_pos)
-                x = rel[0, 3]
-                y = rel[1, 3]
-                theta = math.atan2(rel[1, 0], rel[0, 0])
+            second_pos = ground_truth_dict[second_stamp]
 
-                relations_file_ordered.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
+            rel = get_matrix_diff(first_pos, second_pos)
+            x = rel[0, 3]
+            y = rel[1, 3]
+            theta = math.atan2(rel[1, 0], rel[0, 0])
 
-        first_stamp = second_stamp
-        idx += idx_delta
-
-    relations_file_ordered.close()
+            relations_file_ordered.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
 
     print_info("computing metric ordered_t")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
@@ -191,12 +215,8 @@ def get_matrix_diff(p1, p2):
     Computes the rototranslation difference of two points
     """
 
-    x1 = p1[0]
-    x2 = p2[0]
-    y1 = p1[1]
-    y2 = p2[1]
-    theta1 = p1[2]
-    theta2 = p2[2]
+    x1, y1, theta1 = p1
+    x2, y2, theta2 = p2
 
     m_translation1 = np.matrix(((1, 0, 0, x1),
                                 (0, 1, 0, y1),
@@ -227,19 +247,28 @@ def compute_localization_metrics(run_output_folder):
     """
     Given a run folder path, compute relation files and SLAM metric results
     """
+    base_link_correction_poses_path = path.join(run_output_folder, "base_link_correction_poses")
     base_link_poses_path = path.join(run_output_folder, "base_link_poses")
     ground_truth_poses_path = path.join(run_output_folder, "ground_truth_poses")
-    metric_results_path = path.join(run_output_folder, "metric_results")
+    metric_results_base_link_correction_path = path.join(run_output_folder, "metric_results", "base_link_correction_poses")
+    metric_results_base_link_poses_path = path.join(run_output_folder, "metric_results", "base_link_poses")
     log_files_path = path.join(run_output_folder, "logs")
 
     # create folders structure
-    if not path.exists(metric_results_path):
-        os.makedirs(metric_results_path)
+    if not path.exists(metric_results_base_link_correction_path):
+        os.makedirs(metric_results_base_link_correction_path)
+
+    if not path.exists(metric_results_base_link_poses_path):
+        os.makedirs(metric_results_base_link_poses_path)
 
     if not path.exists(log_files_path):
         os.makedirs(log_files_path)
 
     # check required files exist
+    if not path.isfile(base_link_correction_poses_path):
+        print("compute_localization_metrics: base_link_correction_poses_path file not found {}".format(base_link_correction_poses_path))
+        return
+
     if not path.isfile(base_link_poses_path):
         print("compute_localization_metrics: base_link_poses file not found {}".format(base_link_poses_path))
         return
@@ -260,4 +289,12 @@ def compute_localization_metrics(run_output_folder):
         return
     metric_evaluator_exec_path = metric_evaluator_resources_list[0]
 
-    compute_relations_and_metrics(run_output_folder, metric_results_path, log_files_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
+    print_info("compute_localization_metrics: compute_relations_and_metrics on base_link_correction_poses")
+    compute_relations_and_metrics(run_output_folder, metric_results_base_link_correction_path, log_files_path, base_link_correction_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
+
+    print_info("compute_localization_metrics: compute_relations_and_metrics on base_link_poses_path")
+    compute_relations_and_metrics(run_output_folder, metric_results_base_link_poses_path, log_files_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
+
+
+if __name__ == '__main__':
+    compute_localization_metrics("/home/enrico/ds/performance_modelling_output/test/run_42")

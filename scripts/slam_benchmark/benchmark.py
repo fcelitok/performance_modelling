@@ -30,7 +30,6 @@ benchmark_log_path = None
 def benchmark_log(run_id, event, t=None):
     if t is None:
         t = time.time()
-    print_info("benchmark_log: t: {t}, run_id: {run_id}, event: {event}".format(t=t, run_id=run_id, event=event))
     assert(isinstance(benchmark_log_path, str))
     try:
         with open(benchmark_log_path, 'a') as output_file:
