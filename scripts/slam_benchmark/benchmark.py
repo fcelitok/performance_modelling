@@ -24,23 +24,11 @@ from performance_modelling_ros.metrics.localization_metrics import compute_local
 from performance_modelling_ros.metrics.map_metrics import compute_map_metrics
 from performance_modelling_ros.visualisation.trajectory_visualisation import save_trajectories_plot
 
-benchmark_log_path = None
-
-
-def benchmark_log(run_id, event, t=None):
-    if t is None:
-        t = time.time()
-    assert(isinstance(benchmark_log_path, str))
-    try:
-        with open(benchmark_log_path, 'a') as output_file:
-            output_file.write("{t}, {run_id}, {event}\n".format(t=t, run_id=run_id, event=event))
-    except IOError as e:
-        rospy.logerr("benchmark_log: could not write event to file: {t}, {run_id}, {event}".format(t=t, run_id=run_id, event=event))
-        rospy.logerr(e)
-
 
 class BenchmarkRun(object):
-    def __init__(self, run_id, run_output_folder, show_ros_info, headless, stage_dataset_folder, component_configuration_files, supervisor_configuration_file):
+    def __init__(self, run_id, run_output_folder, benchmark_log_path, show_ros_info, headless, stage_dataset_folder, component_configuration_files, supervisor_configuration_file):
+
+        self.benchmark_log_path = benchmark_log_path
 
         # components configuration parameters
         self.component_configuration_files = component_configuration_files
@@ -86,9 +74,22 @@ class BenchmarkRun(object):
         backup_file_if_exists(supervisor_configuration_copy_path)
         shutil.copyfile(self.supervisor_configuration_file, supervisor_configuration_copy_path)
 
-    def execute_run(self):
+    def log(self, event):
 
-        benchmark_log(run_id=self.run_id, event="run_start")
+        if not path.exists(self.benchmark_log_path):
+            with open(self.benchmark_log_path, 'a') as output_file:
+                output_file.write("{t}, {run_id}, {event}\n".format(t="timestamp", run_id="run_id", event="event"))
+
+        t = time.time()
+
+        try:
+            with open(self.benchmark_log_path, 'a') as output_file:
+                output_file.write("{t}, {run_id}, {event}\n".format(t=t, run_id=self.run_id, event=event))
+        except IOError as e:
+            print_error("benchmark_log: could not write event to file: {t}, {run_id}, {event}".format(t=t, run_id=self.run_id, event=event))
+            print_error(e)
+
+    def execute_run(self):
 
         # components parameters
         Component.common_parameters = {'headless': self.headless, 'output': self.components_ros_output}
@@ -127,10 +128,10 @@ class BenchmarkRun(object):
 
         # wait for the supervisor component to finish
         print_info("execute_run: waiting for supervisor to finish")
-        benchmark_log(run_id=self.run_id, event="waiting_supervisor_finish")
+        self.log(event="waiting_supervisor_finish")
         supervisor.wait_to_finish()
         print_info("execute_run: supervisor has shutdown")
-        benchmark_log(run_id=self.run_id, event="supervisor_shutdown")
+        self.log(event="supervisor_shutdown")
 
         if rospy.is_shutdown():
             print_error("execute_run: supervisor finished by ros_shutdown")
@@ -146,17 +147,17 @@ class BenchmarkRun(object):
         roscore.shutdown()
         print_info("execute_run: components shutdown completed")
 
-        benchmark_log(run_id=self.run_id, event="start_compute_map_metrics")
+        self.log(event="start_compute_map_metrics")
         compute_map_metrics(self.run_output_folder, self.stage_world_folder)
-        benchmark_log(run_id=self.run_id, event="start_compute_localization_metrics")
+        self.log(event="start_compute_localization_metrics")
         compute_localization_metrics(self.run_output_folder)
         print_info("execute_run: metrics computation completed")
 
-        benchmark_log(run_id=self.run_id, event="start_save_trajectories_plot")
+        self.log(event="start_save_trajectories_plot")
         save_trajectories_plot(self.run_output_folder)
         print_info("execute_run: saved visualisation files")
 
-        benchmark_log(run_id=self.run_id, event="run_end")
+        self.log(event="run_end")
 
 
 if __name__ == '__main__':
@@ -208,9 +209,7 @@ if __name__ == '__main__':
     if not path.exists(base_run_folder):
         os.makedirs(base_run_folder)
 
-    benchmark_log_path = path.join(base_run_folder, "benchmark_log.csv")
-    if not path.exists(benchmark_log_path):
-        benchmark_log(t="timestamp", run_id="run_id", event="event")
+    log_file_path = path.join(base_run_folder, "benchmark_log.csv")
 
     environment_folders = sorted(map(path.dirname, set(glob.glob(path.join(path.abspath(path.expanduser(environment_dataset_folder)), "**/*.world"))).union(set(glob.glob(path.join(path.abspath(path.expanduser(environment_dataset_folder)), "*.world"))))))
     print_info("environments found: {}".format(len(environment_folders)))
@@ -267,6 +266,7 @@ if __name__ == '__main__':
                 try:
                     r = BenchmarkRun(run_id=i,
                                      run_output_folder=run_folder,
+                                     benchmark_log_path=log_file_path,
                                      show_ros_info=args.show_ros_info,
                                      headless=args.headless,
                                      stage_dataset_folder=environment_folder,
