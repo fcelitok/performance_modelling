@@ -5,7 +5,7 @@
     <arg name="configuration" />
     <arg name="run_output_folder" />
 
-    <node pkg="slam_benchmark_supervisor" type="slam_benchmark_supervisor_node" name="slam_benchmark_supervisor" output="screen" >
+    <node pkg="performance_modelling" type="slam_benchmark_supervisor_node" name="slam_benchmark_supervisor" output="screen" >
         <rosparam file="$(arg configuration)" />
         <param name="run_output_folder" value="$(arg run_output_folder)" type="string" />
     </node>
