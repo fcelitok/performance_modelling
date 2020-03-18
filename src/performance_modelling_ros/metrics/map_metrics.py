@@ -9,7 +9,7 @@ import yaml
 from PIL import Image
 from os import path
 
-from performance_modelling_ros.utils import print_info, backup_file_if_exists
+from performance_modelling_ros.utils import print_info, print_error, backup_file_if_exists
 
 
 def compute_map_metrics(run_output_folder, stage_world_folder):
@@ -57,7 +57,6 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
     ground_truth_map_size_pixels = np.array(ground_truth_map.size)
     ground_truth_resolution = ground_truth_map_size_meters / ground_truth_map_size_pixels  # meter/pixel, on both axis, except y axis is inverted in image
     ground_truth_cell_area = ground_truth_resolution[0] * ground_truth_resolution[1]  # width × height of one pixel, meters^2
-
 
     if print_metric_results:
         print("ground truth map size:", ground_truth_map_size_meters, "m")
