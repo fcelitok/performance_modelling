@@ -3,6 +3,8 @@
 
 from __future__ import print_function
 
+import copy
+import pickle
 import psutil
 
 import rospy
@@ -14,12 +16,11 @@ from nav_msgs.msg import Odometry, OccupancyGrid
 from image_utils import save_map_image, map_changed
 from std_msgs.msg import Header, Bool
 
-import sys
 import os
 from os import path
 import numpy as np
 
-from performance_modelling_ros.utils import backup_file_if_exists, print_info
+from performance_modelling_ros.utils import backup_file_if_exists, print_info, print_fatal
 
 
 class SlamBenchmarkSupervisor:
@@ -35,9 +36,13 @@ class SlamBenchmarkSupervisor:
         self.run_timeout = rospy.get_param('~run_timeout')
         self.write_base_link_poses_period = rospy.get_param('~write_base_link_poses_period')
         self.map_snapshot_period = rospy.get_param('~map_snapshot_period')
+        self.ps_snapshot_period = rospy.get_param('~ps_snapshot_period')
         self.map_steady_state_period = rospy.get_param('~map_steady_state_period')
         self.run_output_folder = rospy.get_param('~run_output_folder')
-        self.map_output_folder = path.join(self.run_output_folder, "map_snapshots")
+        self.ps_pid_father = rospy.get_param('~pid_father')
+        self.benchmark_data_folder = path.join(self.run_output_folder, "benchmark_data")
+        self.map_output_folder = path.join(self.benchmark_data_folder, "map_snapshots")
+        self.ps_output_folder = path.join(self.benchmark_data_folder, "ps_snapshots")
 
         self.map_change_threshold = rospy.get_param('~map_change_threshold')
         self.map_size_change_threshold = rospy.get_param('~map_size_change_threshold')  # percentage of increased area
@@ -48,27 +53,32 @@ class SlamBenchmarkSupervisor:
         self.terminate = False
         self.initial_ground_truth_pose = None
         self.map_snapshot_count = 0
+        self.ps_snapshot_count = 0
         self.last_map_msg = None
+        self.ps_processes = psutil.Process(self.ps_pid_father).children(recursive=True)
 
         # prepare folder structure
+        if not path.exists(self.benchmark_data_folder):
+            os.makedirs(self.benchmark_data_folder)
+
         if not path.exists(self.map_output_folder):
-            os.mkdir(self.map_output_folder)
-        elif not path.isdir(self.map_output_folder):
-            rospy.logfatal("slam_benchmark_supervisor.__init__: map snapshots folder path {dir} exists but is not a directory!".format(dir=self.map_output_folder))
-            sys.exit(-2)
+            os.makedirs(self.map_output_folder)
+
+        if not path.exists(self.ps_output_folder):
+            os.makedirs(self.ps_output_folder)
 
         # open files for metric computation
-        self.base_link_correction_poses_file_path = path.join(self.run_output_folder, "base_link_correction_poses")
-        self.base_link_poses_file_path = path.join(self.run_output_folder, "base_link_poses")
+        self.base_link_correction_poses_file_path = path.join(self.benchmark_data_folder, "base_link_correction_poses")
+        self.base_link_poses_file_path = path.join(self.benchmark_data_folder, "base_link_poses")
         backup_file_if_exists(self.base_link_poses_file_path)
 
-        self.ground_truth_poses_file_path = path.join(self.run_output_folder, "ground_truth_poses")
+        self.ground_truth_poses_file_path = path.join(self.benchmark_data_folder, "ground_truth_poses")
         backup_file_if_exists(self.ground_truth_poses_file_path)
 
-        self.cmd_vel_twists_file_path = path.join(self.run_output_folder, "cmd_vel_twists")
+        self.cmd_vel_twists_file_path = path.join(self.benchmark_data_folder, "cmd_vel_twists")
         backup_file_if_exists(self.cmd_vel_twists_file_path)
 
-        self.run_events_file_path = path.join(self.run_output_folder, "run_events.csv")
+        self.run_events_file_path = path.join(self.benchmark_data_folder, "run_events.csv")
         self.init_run_events_file()
 
         # setup timers, buffers and subscribers
@@ -77,6 +87,7 @@ class SlamBenchmarkSupervisor:
         self.run_timeout_timer = rospy.Timer(rospy.Duration.from_sec(self.run_timeout), self.run_timeout_callback, oneshot=True)
         self.write_base_link_poses_timer = rospy.Timer(rospy.Duration.from_sec(self.write_base_link_poses_period), self.write_base_link_poses_timer_callback)
         self.save_map_snapshot_timer = rospy.Timer(rospy.Duration.from_sec(self.map_snapshot_period), self.save_map_snapshot_timer_callback)
+        self.ps_snapshot_timer = rospy.Timer(rospy.Duration.from_sec(self.ps_snapshot_period), self.ps_snapshot_timer_callback)
         self.explorer_finished_subscriber = rospy.Subscriber(exploration_finished_topic, Bool, self.exploration_finished_callback, queue_size=10)
         self.ground_truth_pose_subscriber = rospy.Subscriber(base_link_ground_truth_topic, Odometry, self.ground_truth_pose_callback, queue_size=10)
         self.gmapping_correction_subscriber = rospy.Subscriber(gmapping_correction_topic, Header, self.gmapping_correction_header_callback, queue_size=10)
@@ -176,22 +187,49 @@ class SlamBenchmarkSupervisor:
             pass
 
     def ps_snapshot_timer_callback(self, _):
-        processes_list = list(psutil.process_iter())
-        # TODO save ps list in ps_snapshots folder
+        ps_snapshot_file_path = path.join(self.ps_output_folder, "ps_{i:08d}.pkl".format(i=self.ps_snapshot_count))
+
+        processes_dicts_list = list()
+        for process in self.ps_processes:
+            try:
+                process_copy = copy.deepcopy(process.as_dict())
+            except psutil.NoSuchProcess:  # processes may die while the iterator is being used, causing this exception to be raised from psutil.Process.as_dict
+                continue
+            try:
+                # delete uninteresting values
+                del process_copy['connections']
+                del process_copy['memory_maps']
+                del process_copy['environ']
+
+                processes_dicts_list.append(process_copy)
+            except KeyError:
+                pass
+
+        # print_info("ps list:", map(lambda pd: pd['name'], processes_dicts_list))
+        # for process in processes_dicts_list:
+        #     print(process['name'])
+        #     for k in ['cpu_percent', 'cpu_times', 'num_threads', 'memory_percent', 'memory_info', 'memory_full_info', 'status', ]:
+        #         print("\t{}:\t\t{}".format(k, process[k]))
+        #     print("")
+
+        with open(ps_snapshot_file_path, 'w') as ps_snapshot_file:
+            pickle.dump(processes_dicts_list, ps_snapshot_file)
+
+        self.ps_snapshot_count += 1
 
     def save_map_snapshot_timer_callback(self, _):
 
         if self.last_map_msg is None:
             return
 
-        latest_map_image_file_path = path.join(self.map_output_folder, "map_{i}.pgm".format(i=self.map_snapshot_count))
-        latest_map_info_file_path = path.join(self.map_output_folder, "map_{i}_info.yaml".format(i=self.map_snapshot_count))
+        latest_map_image_file_path = path.join(self.map_output_folder, "map_{i:08d}.pgm".format(i=self.map_snapshot_count))
+        latest_map_info_file_path = path.join(self.map_output_folder, "map_{i:08d}_info.yaml".format(i=self.map_snapshot_count))
         save_map_image(self.last_map_msg, latest_map_image_file_path, latest_map_info_file_path, self.map_free_threshold, self.map_occupied_threshold)
 
         steady_state_count = int(np.math.ceil(self.map_steady_state_period / self.map_snapshot_period))
 
         if self.map_snapshot_count > steady_state_count:
-            previous_map_image_file_path = path.join(self.map_output_folder, "map_{i}.pgm".format(i=self.map_snapshot_count - steady_state_count))
+            previous_map_image_file_path = path.join(self.map_output_folder, "map_{i:08d}.pgm".format(i=self.map_snapshot_count - steady_state_count))
 
             if not map_changed(previous_map_image_file_path, latest_map_image_file_path, self.map_size_change_threshold, self.map_change_threshold):
                 print_info("slam_benchmark_supervisor: map change lower than threshold, terminating run")

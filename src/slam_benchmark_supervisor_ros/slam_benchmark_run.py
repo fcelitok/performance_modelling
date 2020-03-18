@@ -85,13 +85,16 @@ class BenchmarkRun(object):
     def execute_run(self):
 
         # components parameters
-        Component.common_parameters = {'headless': self.headless, 'output': self.components_ros_output}
+        Component.common_parameters = {'headless': self.headless,
+                                       'output': self.components_ros_output}
         environment_params = {'stage_world_file': self.stage_world_file}
         recorder_params = {'bag_file_path': path.join(self.run_output_folder, "odom_tf_ground_truth.bag")}
         slam_params = {'configuration': self.component_configuration_files['gmapping']}
         explorer_params = {'configuration': self.component_configuration_files['explore_lite']}
         navigation_params = {'configuration': self.component_configuration_files['move_base']}
-        supervisor_params = {'run_output_folder': self.run_output_folder, 'configuration': self.supervisor_configuration_file}
+        supervisor_params = {'run_output_folder': self.run_output_folder,
+                             'configuration': self.supervisor_configuration_file,
+                             'pid_father': os.getpid()}
 
         # declare components
         roscore = Component('roscore', 'performance_modelling', 'roscore.launch')

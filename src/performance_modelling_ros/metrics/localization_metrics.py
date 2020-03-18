@@ -27,9 +27,9 @@ def metric_evaluator(exec_path, poses_path, relations_path, weights, log_path, e
         p.wait()
 
 
-def compute_relations_and_metrics(run_output_folder, results_output_folder, log_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, alpha=0.99, max_error=0.02):
+def compute_relations_and_metrics(results_output_folder, log_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, alpha=0.99, max_error=0.02):
     """
-    Generates the ordered and the random relations files
+    Generates the ordered and the random relations files and computes the metrics
     """
 
     print_info("computing acceptable ground truth relation times")
@@ -51,22 +51,23 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
     if len(base_link_times) < 2:
         return
 
+    # only accept the ground truth values that are close in time to the base_link values
     max_diff = 0.1
     ground_truth_acceptable_times = list()
     for i in ground_truth_times:
-        while len(base_link_times) > 0 and base_link_times[0] - i <= -max_diff:  # discard all gt times that are too old
+        while len(base_link_times) > 0 and base_link_times[0] - i <= -max_diff:  # discard all base_link times that are too old
             base_link_times.popleft()
 
-        if len(base_link_times) == 0:
+        if len(base_link_times) == 0:  # if all base_link values have been discarded because too old, no more ground truth values can be accepted
             break
 
-        # once old values are discarded, either the next value is acceptable or too young
+        # once old base_link values are discarded, either the next value is acceptable or too young
         if base_link_times[0] - i < max_diff:  # accept the gt value if the difference is within range: -max_diff <= base_link_times[0] - i <= max_diff
             ground_truth_acceptable_times.append(i)
 
     # random relations
     print_info("computing random relations")
-    relations_re_file_path = path.join(run_output_folder, "re_relations")
+    relations_re_file_path = path.join(results_output_folder, "re_relations")
     with open(relations_re_file_path, "w") as relations_file_re:
 
         if len(ground_truth_acceptable_times) == 0:
@@ -168,7 +169,7 @@ def compute_relations_and_metrics(run_output_folder, results_output_folder, log_
                      unsorted_errors_path=path.join(results_output_folder, "re_r_unsorted_errors"))
 
     # ordered relations
-    ordered_relations_file_path = path.join(run_output_folder, "ordered_relations")
+    ordered_relations_file_path = path.join(results_output_folder, "ordered_relations")
     with open(ordered_relations_file_path, "w") as relations_file_ordered:
 
         idx_delta = len(ground_truth_acceptable_times)/n_samples
@@ -247,12 +248,12 @@ def compute_localization_metrics(run_output_folder):
     """
     Given a run folder path, compute relation files and SLAM metric results
     """
-    base_link_correction_poses_path = path.join(run_output_folder, "base_link_correction_poses")
-    base_link_poses_path = path.join(run_output_folder, "base_link_poses")
-    ground_truth_poses_path = path.join(run_output_folder, "ground_truth_poses")
+    base_link_correction_poses_path = path.join(run_output_folder, "benchmark_data", "base_link_correction_poses")
+    base_link_poses_path = path.join(run_output_folder, "benchmark_data", "base_link_poses")
+    ground_truth_poses_path = path.join(run_output_folder, "benchmark_data", "ground_truth_poses")
     metric_results_base_link_correction_path = path.join(run_output_folder, "metric_results", "base_link_correction_poses")
     metric_results_base_link_poses_path = path.join(run_output_folder, "metric_results", "base_link_poses")
-    log_files_path = path.join(run_output_folder, "logs")
+    logs_folder_path = path.join(run_output_folder, "logs")
 
     # create folders structure
     if not path.exists(metric_results_base_link_correction_path):
@@ -261,20 +262,20 @@ def compute_localization_metrics(run_output_folder):
     if not path.exists(metric_results_base_link_poses_path):
         os.makedirs(metric_results_base_link_poses_path)
 
-    if not path.exists(log_files_path):
-        os.makedirs(log_files_path)
+    if not path.exists(logs_folder_path):
+        os.makedirs(logs_folder_path)
 
     # check required files exist
     if not path.isfile(base_link_correction_poses_path):
-        print("compute_localization_metrics: base_link_correction_poses_path file not found {}".format(base_link_correction_poses_path))
+        print_error("compute_localization_metrics: base_link_correction_poses_path file not found {}".format(base_link_correction_poses_path))
         return
 
     if not path.isfile(base_link_poses_path):
-        print("compute_localization_metrics: base_link_poses file not found {}".format(base_link_poses_path))
+        print_error("compute_localization_metrics: base_link_poses file not found {}".format(base_link_poses_path))
         return
 
     if not path.isfile(ground_truth_poses_path):
-        print("compute_localization_metrics: ground_truth_poses file not found {}".format(ground_truth_poses_path))
+        print_error("compute_localization_metrics: ground_truth_poses file not found {}".format(ground_truth_poses_path))
         return
 
     # find the metricEvaluator executable
@@ -282,18 +283,18 @@ def compute_localization_metrics(run_output_folder):
     metric_evaluator_exec_name = 'metricEvaluator'
     metric_evaluator_resources_list = roslib.packages.find_resource(metric_evaluator_package_name, metric_evaluator_exec_name)
     if len(metric_evaluator_resources_list) > 1:
-        print("Multiple files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
+        print_error("Multiple files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
         return
     elif len(metric_evaluator_resources_list) == 0:
-        print("No files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
+        print_error("No files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
         return
     metric_evaluator_exec_path = metric_evaluator_resources_list[0]
 
     print_info("compute_localization_metrics: compute_relations_and_metrics on base_link_correction_poses")
-    compute_relations_and_metrics(run_output_folder, metric_results_base_link_correction_path, log_files_path, base_link_correction_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
+    compute_relations_and_metrics(metric_results_base_link_correction_path, logs_folder_path, base_link_correction_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
 
     print_info("compute_localization_metrics: compute_relations_and_metrics on base_link_poses_path")
-    compute_relations_and_metrics(run_output_folder, metric_results_base_link_poses_path, log_files_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
+    compute_relations_and_metrics(metric_results_base_link_poses_path, logs_folder_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
 
 
 if __name__ == '__main__':

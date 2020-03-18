@@ -14,23 +14,19 @@ from performance_modelling_ros.utils import print_info, print_error, backup_file
 
 def compute_map_metrics(run_output_folder, stage_world_folder):
     print_metric_results = False
-    metric_results_path = path.join(run_output_folder, "metric_results")
-    log_files_path = path.join(run_output_folder, "logs")
-    map_snapshots_path = path.join(run_output_folder, "map_snapshots")
+    map_snapshots_path = path.join(run_output_folder, "benchmark_data", "map_snapshots")
     last_map_snapshot_path = path.join(map_snapshots_path, "last_map.pgm")
     last_map_info_path = path.join(map_snapshots_path, "last_map_info.yaml")
 
     ground_truth_map_info_file_path = path.join(stage_world_folder, "stage_world_info.yaml")
     ground_truth_map_file_path = path.join(stage_world_folder, "map_ground_truth.pgm")
 
+    metric_results_path = path.join(run_output_folder, "metric_results")
     map_metric_result_file_path = path.join(metric_results_path, "normalised_explored_area.yaml")
 
     # create folders structure
     if not path.exists(metric_results_path):
         os.makedirs(metric_results_path)
-
-    if not path.exists(log_files_path):
-        os.makedirs(log_files_path)
 
     # check required files exist
     if not path.isfile(last_map_snapshot_path):
