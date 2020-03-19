@@ -3,6 +3,7 @@
 
 from __future__ import print_function
 
+import glob
 import numpy as np
 import os
 import yaml
@@ -12,11 +13,15 @@ from os import path
 from performance_modelling_ros.utils import print_info, print_error, backup_file_if_exists
 
 
-def compute_map_metrics(run_output_folder, stage_world_folder):
+def compute_map_metrics(run_output_folder, stage_world_folder=None):
     print_metric_results = False
     map_snapshots_path = path.join(run_output_folder, "benchmark_data", "map_snapshots")
     last_map_snapshot_path = path.join(map_snapshots_path, "last_map.pgm")
     last_map_info_path = path.join(map_snapshots_path, "last_map_info.yaml")
+
+    if stage_world_folder is None:
+        with open(path.join(run_output_folder, "run_info.yaml"), 'r') as run_info_file:
+            stage_world_folder = yaml.load(run_info_file)['environment_folder']
 
     ground_truth_map_info_file_path = path.join(stage_world_folder, "stage_world_info.yaml")
     ground_truth_map_file_path = path.join(stage_world_folder, "map_ground_truth.pgm")
@@ -52,13 +57,7 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
     ground_truth_map_size_meters = np.array([float(stage_info_yaml['map']['size']['x']), float(stage_info_yaml['map']['size']['y'])])
     ground_truth_map_size_pixels = np.array(ground_truth_map.size)
     ground_truth_resolution = ground_truth_map_size_meters / ground_truth_map_size_pixels  # meter/pixel, on both axis, except y axis is inverted in image
-    ground_truth_cell_area = ground_truth_resolution[0] * ground_truth_resolution[1]  # width × height of one pixel, meters^2
-
-    if print_metric_results:
-        print("ground truth map size:", ground_truth_map_size_meters, "m")
-        print("ground truth map size:", ground_truth_map_size_pixels, "pixels")
-        print("ground truth map resolution:", ground_truth_resolution, "m")
-        print("ground truth map cell area:", ground_truth_cell_area, "m²")
+    ground_truth_cell_area = float(ground_truth_resolution[0] * ground_truth_resolution[1])  # width × height of one pixel, meters^2
 
     ground_truth_free_cell_count = 0
     ground_truth_occupied_cell_count = 0
@@ -73,20 +72,6 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
 
     explorable_area = ground_truth_free_cell_count * ground_truth_cell_area
 
-    if print_metric_results:
-        print("ground truth:")
-        print("\tcount:")
-        print("\t\tfree:", ground_truth_free_cell_count, ground_truth_free_cell_count/float(ground_truth_total_cell_count))
-        print("\t\toccupied:", ground_truth_occupied_cell_count, ground_truth_occupied_cell_count/float(ground_truth_total_cell_count))
-        print("\t\tunknown:", ground_truth_unknown_cell_count, ground_truth_unknown_cell_count/float(ground_truth_total_cell_count))
-        print("\t\ttotal:", ground_truth_total_cell_count)
-
-        print("\tarea:")
-        print("\t\tfree:", explorable_area, "m²")
-        print("\t\toccupied:", ground_truth_occupied_cell_count * ground_truth_cell_area, "m²")
-        print("\t\tunknown:", ground_truth_unknown_cell_count * ground_truth_cell_area, "m²")
-        print("\t\ttotal:", ground_truth_total_cell_count * ground_truth_cell_area, "m²")
-
     result_map = Image.open(last_map_snapshot_path)
 
     if print_metric_results:
@@ -98,11 +83,6 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
     ground_truth_map_size_pixels = np.array(result_map.size)
     result_map_resolution = float(result_map_info_yaml['info']['resolution'])  # meter/pixel, on both axis
     result_cell_area = result_map_resolution**2  # length of one pixel squared, meters^2
-
-    if print_metric_results:
-        print("map_size:", ground_truth_map_size_pixels, "pixels")
-        print("result map resolution:", result_map_resolution, "m")
-        print("result map cell area:", result_cell_area, "m²")
 
     result_free_cell_count = 0
     result_occupied_cell_count = 0
@@ -118,19 +98,6 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
     explored_area = result_free_cell_count * result_cell_area
 
     if print_metric_results:
-        print("result map:")
-        print("\tcount:")
-        print("\t\tfree:", result_free_cell_count, result_free_cell_count/float(result_total_cell_count))
-        print("\t\toccupied:", result_occupied_cell_count, result_occupied_cell_count/float(result_total_cell_count))
-        print("\t\tunknown:", result_unknown_cell_count, result_unknown_cell_count/float(result_total_cell_count))
-        print("\t\ttotal:", result_total_cell_count)
-
-        print("\tarea:")
-        print("\t\tfree:", explored_area, "m²")
-        print("\t\toccupied:", result_occupied_cell_count * result_cell_area, "m²")
-        print("\t\tunknown:", result_unknown_cell_count * result_cell_area, "m²")
-        print("\t\ttotal:", result_total_cell_count * result_cell_area, "m²")
-
         print_info("normalised explored area:", explored_area / explorable_area)
 
     yaml_dict = {
@@ -170,4 +137,7 @@ def compute_map_metrics(run_output_folder, stage_world_folder):
 
 
 if __name__ == '__main__':
-    compute_map_metrics(run_output_folder="/home/enrico/ds/performance_modelling_output/test/run_23", stage_world_folder="/home/enrico/ds/performance_modelling_all_datasets/test")
+    run_folders = filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling_output/test/*")))
+    last_run_folder = sorted(run_folders, key=lambda x: path.getmtime(x))[-1]
+    print("last run folder:", last_run_folder)
+    compute_map_metrics(last_run_folder)

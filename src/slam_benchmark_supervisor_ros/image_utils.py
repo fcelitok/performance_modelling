@@ -330,5 +330,5 @@ def compute_ground_truth_from_stage_map_for_all(all_datasets_folder):
 
 
 if __name__ == '__main__':
-    compute_ground_truth_from_stage_map_for_all("/home/enrico/ds/performance_modelling_all_datasets")
-    # compute_ground_truth_from_stage_map(stage_world_folder="/home/enrico/ds/performance_modelling_all_datasets/airlab", do_not_recompute=False, backup_if_exists=True)
+    compute_ground_truth_from_stage_map_for_all(path.expanduser("~/ds/performance_modelling_all_datasets"))
+    # compute_ground_truth_from_stage_map(stage_world_folder=path.expanduser("~/ds/performance_modelling_all_datasets/test"), do_not_recompute=False, backup_if_exists=True)

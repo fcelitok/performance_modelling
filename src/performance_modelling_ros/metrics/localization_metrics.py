@@ -3,6 +3,7 @@
 
 from __future__ import print_function
 
+import glob
 import math
 import numpy as np
 import os
@@ -298,4 +299,7 @@ def compute_localization_metrics(run_output_folder):
 
 
 if __name__ == '__main__':
-    compute_localization_metrics("/home/enrico/ds/performance_modelling_output/test/run_42")
+    run_folders = filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling_output/test/*")))
+    last_run_folder = sorted(run_folders, key=lambda x: path.getmtime(x))[-1]
+    print("last run folder:", last_run_folder)
+    compute_localization_metrics(last_run_folder)
