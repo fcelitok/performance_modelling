@@ -113,7 +113,7 @@ class BenchmarkRun(object):
         # launch components
         print_info("execute_run: launching components")
         rviz.launch()
-        environment.launch(headless=False)  # Override headless parameter TODO stage still does not run correctly in headless mode
+        environment.launch()
         recorder.launch()
         slam.launch()
         navigation.launch()
