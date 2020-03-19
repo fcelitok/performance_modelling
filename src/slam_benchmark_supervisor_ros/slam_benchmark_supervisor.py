@@ -20,7 +20,7 @@ import os
 from os import path
 import numpy as np
 
-from performance_modelling_ros.utils import backup_file_if_exists, print_info, print_fatal
+from performance_modelling_ros.utils import backup_file_if_exists, print_info
 
 
 class SlamBenchmarkSupervisor:
