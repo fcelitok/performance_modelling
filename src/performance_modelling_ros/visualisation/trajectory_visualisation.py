@@ -3,10 +3,12 @@
 
 from __future__ import print_function
 
+import glob
 import os
 from os import path
 
 import matplotlib as mpl
+
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -59,12 +61,19 @@ def save_trajectories_plot(run_output_folder):
 
     fig, ax = plt.subplots()
     ax.cla()
-    ax.plot(x, y, 'red', linewidth=0.25)
-    ax.scatter(x_c, y_c, s=10, c='black', marker='x', linewidth=0.25)
-    ax.plot(x_gt, y_gt, 'blue', linewidth=0.25)
+
+    ax.plot(x, y, 'red', linewidth=0.25, label='slam+odom estimate')
+    ax.scatter(x_c, y_c, s=10, c='black', marker='x', linewidth=0.25, label='slam corrections')
+    ax.plot(x_gt, y_gt, 'blue', linewidth=0.25, label='ground truth')
+
+    ax.legend(fontsize='x-small')
+
     fig.savefig(figure_output_path)
     plt.close(fig)
 
 
 if __name__ == '__main__':
-    save_trajectories_plot("/home/enrico/ds/performance_modelling_output/test/run_57")
+    run_folders = filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling_output/test/*")))
+    last_run_folder = sorted(run_folders, key=lambda x: path.getmtime(x))[-1]
+    print("last run folder:", last_run_folder)
+    save_trajectories_plot(last_run_folder)
