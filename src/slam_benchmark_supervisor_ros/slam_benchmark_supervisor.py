@@ -55,7 +55,7 @@ class SlamBenchmarkSupervisor:
         self.map_snapshot_count = 0
         self.ps_snapshot_count = 0
         self.last_map_msg = None
-        self.ps_processes = psutil.Process(self.ps_pid_father).children(recursive=True)
+        self.ps_processes = psutil.Process(self.ps_pid_father).children(recursive=True)  # list of processes children of the benchmark script, i.e., all ros nodes of the benchmark including this one
 
         # prepare folder structure
         if not path.exists(self.benchmark_data_folder):
@@ -192,8 +192,8 @@ class SlamBenchmarkSupervisor:
         processes_dicts_list = list()
         for process in self.ps_processes:
             try:
-                process_copy = copy.deepcopy(process.as_dict())
-            except psutil.NoSuchProcess:  # processes may die while the iterator is being used, causing this exception to be raised from psutil.Process.as_dict
+                process_copy = copy.deepcopy(process.as_dict())  # get all information about the process
+            except psutil.NoSuchProcess:  # processes may have died, causing this exception to be raised from psutil.Process.as_dict
                 continue
             try:
                 # delete uninteresting values
@@ -204,13 +204,6 @@ class SlamBenchmarkSupervisor:
                 processes_dicts_list.append(process_copy)
             except KeyError:
                 pass
-
-        # print_info("ps list:", map(lambda pd: pd['name'], processes_dicts_list))
-        # for process in processes_dicts_list:
-        #     print(process['name'])
-        #     for k in ['cpu_percent', 'cpu_times', 'num_threads', 'memory_percent', 'memory_info', 'memory_full_info', 'status', ]:
-        #         print("\t{}:\t\t{}".format(k, process[k]))
-        #     print("")
 
         with open(ps_snapshot_file_path, 'w') as ps_snapshot_file:
             pickle.dump(processes_dicts_list, ps_snapshot_file)
