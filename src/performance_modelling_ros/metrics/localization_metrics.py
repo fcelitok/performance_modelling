@@ -28,12 +28,41 @@ def metric_evaluator(exec_path, poses_path, relations_path, weights, log_path, e
         p.wait()
 
 
-def compute_relations_and_metrics(results_output_folder, log_output_folder, base_link_poses_file_path, ground_truth_file_path, metric_evaluator_exec_path, alpha=0.99, max_error=0.02):
+def compute_relative_localization_error(results_output_folder, log_output_folder, base_link_poses_file_path, ground_truth_file_path, alpha=0.99, max_error=0.02):
     """
     Generates the ordered and the random relations files and computes the metrics
     """
 
-    print_info("computing acceptable ground truth relation times")
+    # prepare folder structure
+    if not path.exists(results_output_folder):
+        os.makedirs(results_output_folder)
+
+    if not path.exists(log_output_folder):
+        os.makedirs(log_output_folder)
+
+    # check required files exist
+    if not path.isfile(base_link_poses_file_path):
+        print_error("compute_relative_localization_error: base_link_poses_file_path file not found {}".format(base_link_poses_file_path))
+        return
+
+    if not path.isfile(ground_truth_file_path):
+        print_error("compute_relative_localization_error: ground_truth_poses file not found {}".format(ground_truth_file_path))
+        return
+
+    # find the metricEvaluator executable
+    metric_evaluator_package_name = 'performance_modelling'
+    metric_evaluator_exec_name = 'metricEvaluator'
+    metric_evaluator_resources_list = roslib.packages.find_resource(metric_evaluator_package_name, metric_evaluator_exec_name)
+    if len(metric_evaluator_resources_list) > 1:
+        print_error("compute_relative_localization_error: multiple files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
+        return
+    elif len(metric_evaluator_resources_list) == 0:
+        print_error("compute_relative_localization_error: no files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
+        return
+    metric_evaluator_exec_path = metric_evaluator_resources_list[0]
+
+    # compute acceptable ground truth relation times
+    print_info("compute_relative_localization_error: computing acceptable ground truth relation times")
     ground_truth_dict = dict()
     with open(ground_truth_file_path, "r") as ground_truth_file:
         for line in ground_truth_file:
@@ -67,7 +96,7 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
             ground_truth_acceptable_times.append(i)
 
     # random relations
-    print_info("computing random relations")
+    print_info("compute_relative_localization_error: computing random relations")
     relations_re_file_path = path.join(results_output_folder, "re_relations")
     with open(relations_re_file_path, "w") as relations_file_re:
 
@@ -94,7 +123,7 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
     # Run the metric evaluator on this relations file, read the sample standard deviation and exploit it to rebuild a better sample
 
     # Compute translational sample size
-    print_info("computing metric summary_t")
+    print_info("compute_relative_localization_error: computing metric summary_t")
     summary_t_file_path = path.join(results_output_folder, "summary_t_errors")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
@@ -113,7 +142,7 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
     n_samples_t = int(math.pow(z_a_2, 2) * var / math.pow(delta, 2))
 
     # Compute rotational sample size
-    print_info("computing metric summary_r")
+    print_info("compute_relative_localization_error: computing metric summary_r")
     summary_r_file_path = path.join(results_output_folder, "summary_r_errors")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
@@ -134,7 +163,7 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
     # Select the biggest of the two
     n_samples = max(n_samples_t, n_samples_r)
 
-    print_info("computing re relations with {n} samples".format(n=n_samples))
+    print_info("compute_relative_localization_error: computing re relations with {n} samples".format(n=n_samples))
     with open(relations_re_file_path, "w") as relations_file_re:
         for _ in range(n_samples):
             first_stamp = float(random.choice(ground_truth_acceptable_times))
@@ -151,7 +180,7 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
 
             relations_file_re.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
 
-    print_info("computing metric re_t_unsorted")
+    print_info("compute_relative_localization_error: computing metric re_t_unsorted")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
@@ -160,7 +189,7 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
                      errors_path=path.join(results_output_folder, "re_t.csv"),
                      unsorted_errors_path=path.join(results_output_folder, "re_t_unsorted_errors"))
 
-    print_info("computing metric re_r_unsorted")
+    print_info("compute_relative_localization_error: computing metric re_r_unsorted")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=relations_re_file_path,
@@ -175,10 +204,10 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
 
         idx_delta = len(ground_truth_acceptable_times)/n_samples
         if idx_delta == 0:
-            print_error("len(ground_truth_acceptable_times) [{l}] < n_samples [{n}]".format(l=len(ground_truth_acceptable_times), n=n_samples))
+            print_error("compute_relative_localization_error: len(ground_truth_acceptable_times) [{l}] < n_samples [{n}]".format(l=len(ground_truth_acceptable_times), n=n_samples))
             idx_delta = 1
 
-        print_info("computing ordered relations with {n} samples".format(n=len(ground_truth_acceptable_times[0::idx_delta][0:-1])))
+        print_info("compute_relative_localization_error: computing ordered relations with {n} samples".format(n=len(ground_truth_acceptable_times[0::idx_delta][0:-1])))
 
         for idx, first_stamp in enumerate(ground_truth_acceptable_times[0::idx_delta][0:-1]):
             second_stamp = ground_truth_acceptable_times[idx + idx_delta]
@@ -193,7 +222,7 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
 
             relations_file_ordered.write("{first_stamp} {second_stamp} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(first_stamp=first_stamp, second_stamp=second_stamp, x=x, y=y, theta=theta))
 
-    print_info("computing metric ordered_t")
+    print_info("compute_relative_localization_error: computing metric ordered_t")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=ordered_relations_file_path,
@@ -202,7 +231,7 @@ def compute_relations_and_metrics(results_output_folder, log_output_folder, base
                      errors_path=path.join(results_output_folder, "ordered_t.csv"),
                      unsorted_errors_path=path.join(results_output_folder, "ordered_t_unsorted_errors"))
 
-    print_info("computing metric ordered_r")
+    print_info("compute_relative_localization_error: computing metric ordered_r")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
                      poses_path=base_link_poses_file_path,
                      relations_path=ordered_relations_file_path,
@@ -245,6 +274,93 @@ def get_matrix_diff(p1, p2):
     return m1.I * m2
 
 
+def compute_absolute_localization_error(results_output_folder, base_link_poses_file_path, ground_truth_file_path):
+
+    # prepare folder structure
+    if not path.exists(results_output_folder):
+        os.makedirs(results_output_folder)
+
+    # check required files exist
+    if not path.isfile(base_link_poses_file_path):
+        print_error("compute_relative_localization_error: base_link_poses_file_path file not found {}".format(base_link_poses_file_path))
+        return
+
+    if not path.isfile(ground_truth_file_path):
+        print_error("compute_relative_localization_error: ground_truth_poses file not found {}".format(ground_truth_file_path))
+        return
+
+    # compute matching ground truth and slam poses times
+    print_info("compute_absolute_localization_error: computing matching ground truth and slam poses times")
+    ground_truth_dict = dict()
+    with open(ground_truth_file_path, "r") as ground_truth_file:
+        for line in ground_truth_file:
+            time, x, y, theta = map(float, line.split(', '))
+            ground_truth_dict[time] = (x, y, theta)
+
+    base_link_dict = dict()
+    with open(base_link_poses_file_path, "r") as base_link_file:
+        for line in base_link_file:
+            x, y, theta, time = map(float, line.split(' ')[-4:])
+            base_link_dict[time] = (x, y, theta)
+
+    matching_poses_dict = dict()
+    for time in ground_truth_dict.keys():
+        if time in base_link_dict:
+            matching_poses_dict[time] = (base_link_dict[time], ground_truth_dict[time])
+
+    print_info("compute_absolute_localization_error: found {} matching poses".format(len(matching_poses_dict)))
+
+    def euclidean_distance(poses):
+        a, b = poses
+        a_x, a_y, _ = a
+        b_x, b_y, _ = b
+
+        return np.sqrt(np.sum((np.array((a_x, a_y)) - np.array((b_x, b_y)))**2))
+
+    absolute_localization_error = sum(map(euclidean_distance, matching_poses_dict.values()))
+    print(absolute_localization_error)
+
+    result_file_path = path.join(results_output_folder, "absolute_localization_error")
+    with open(result_file_path, "w") as result_file:
+        result_file.write("{}\n".format(absolute_localization_error))
+
+
+def compute_trajectory_length(results_output_folder, ground_truth_file_path):
+
+    # prepare folder structure
+    if not path.exists(results_output_folder):
+        os.makedirs(results_output_folder)
+
+    # check required files exist
+    if not path.isfile(ground_truth_file_path):
+        print_error("compute_trajectory_length: ground_truth_poses file not found {}".format(ground_truth_file_path))
+        return
+
+    # compute matching ground truth and slam poses times
+    print_info("compute_trajectory_length: computing trajectory points list")
+    ground_truth_points = list()
+    with open(ground_truth_file_path, "r") as ground_truth_file:
+        for line in ground_truth_file:
+            _, x, y, _ = map(float, line.split(', '))
+            ground_truth_points.append((x, y))
+
+    def euclidean_distance(a, b):
+        a_x, a_y = a
+        b_x, b_y = b
+
+        return np.sqrt(np.sum((np.array((a_x, a_y)) - np.array((b_x, b_y)))**2))
+
+    trajectory_length = 0.0
+
+    for i in range(len(ground_truth_points)-1):
+        trajectory_length += euclidean_distance(ground_truth_points[i], ground_truth_points[i+1])
+
+    print(trajectory_length)
+    result_file_path = path.join(results_output_folder, "trajectory_length")
+    with open(result_file_path, "w") as result_file:
+        result_file.write("{}\n".format(trajectory_length))
+
+
 def compute_localization_metrics(run_output_folder):
     """
     Given a run folder path, compute relation files and SLAM metric results
@@ -252,54 +368,35 @@ def compute_localization_metrics(run_output_folder):
     base_link_correction_poses_path = path.join(run_output_folder, "benchmark_data", "base_link_correction_poses")
     base_link_poses_path = path.join(run_output_folder, "benchmark_data", "base_link_poses")
     ground_truth_poses_path = path.join(run_output_folder, "benchmark_data", "ground_truth_poses")
-    metric_results_base_link_correction_path = path.join(run_output_folder, "metric_results", "base_link_correction_poses")
-    metric_results_base_link_poses_path = path.join(run_output_folder, "metric_results", "base_link_poses")
+
+    metric_results_path = path.join(run_output_folder, "metric_results")
+    relative_localisation_correction_error_path = path.join(metric_results_path, "relative_localisation_correction_error")
+    relative_localisation_error_path = path.join(metric_results_path, "relative_localisation_error")
+    absolute_localisation_correction_error_path = path.join(metric_results_path, "absolute_localisation_correction_error")
+    absolute_localisation_error_path = path.join(metric_results_path, "absolute_localisation_error")
+
     logs_folder_path = path.join(run_output_folder, "logs")
 
-    # create folders structure
-    if not path.exists(metric_results_base_link_correction_path):
-        os.makedirs(metric_results_base_link_correction_path)
+    print_info("compute_localization_metrics: compute_trajectory_length")
+    compute_trajectory_length(metric_results_path, ground_truth_poses_path)
 
-    if not path.exists(metric_results_base_link_poses_path):
-        os.makedirs(metric_results_base_link_poses_path)
+    print_info("compute_localization_metrics: compute_relative_localization_error on base_link_correction_poses")
+    compute_relative_localization_error(relative_localisation_correction_error_path, logs_folder_path, base_link_correction_poses_path, ground_truth_poses_path)
 
-    if not path.exists(logs_folder_path):
-        os.makedirs(logs_folder_path)
+    print_info("compute_localization_metrics: compute_relative_localization_error on base_link_poses_path")
+    compute_relative_localization_error(relative_localisation_error_path, logs_folder_path, base_link_poses_path, ground_truth_poses_path)
 
-    # check required files exist
-    if not path.isfile(base_link_correction_poses_path):
-        print_error("compute_localization_metrics: base_link_correction_poses_path file not found {}".format(base_link_correction_poses_path))
-        return
+    print_info("compute_localization_metrics: compute_absolute_localization_error on base_link_correction_poses")
+    compute_absolute_localization_error(absolute_localisation_correction_error_path, base_link_correction_poses_path, ground_truth_poses_path)
 
-    if not path.isfile(base_link_poses_path):
-        print_error("compute_localization_metrics: base_link_poses file not found {}".format(base_link_poses_path))
-        return
-
-    if not path.isfile(ground_truth_poses_path):
-        print_error("compute_localization_metrics: ground_truth_poses file not found {}".format(ground_truth_poses_path))
-        return
-
-    # find the metricEvaluator executable
-    metric_evaluator_package_name = 'performance_modelling'
-    metric_evaluator_exec_name = 'metricEvaluator'
-    metric_evaluator_resources_list = roslib.packages.find_resource(metric_evaluator_package_name, metric_evaluator_exec_name)
-    if len(metric_evaluator_resources_list) > 1:
-        print_error("Multiple files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
-        return
-    elif len(metric_evaluator_resources_list) == 0:
-        print_error("No files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
-        return
-    metric_evaluator_exec_path = metric_evaluator_resources_list[0]
-
-    print_info("compute_localization_metrics: compute_relations_and_metrics on base_link_correction_poses")
-    compute_relations_and_metrics(metric_results_base_link_correction_path, logs_folder_path, base_link_correction_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
-
-    print_info("compute_localization_metrics: compute_relations_and_metrics on base_link_poses_path")
-    compute_relations_and_metrics(metric_results_base_link_poses_path, logs_folder_path, base_link_poses_path, ground_truth_poses_path, metric_evaluator_exec_path)
+    print_info("compute_localization_metrics: compute_absolute_localization_error on base_link_poses_path")
+    compute_absolute_localization_error(absolute_localisation_error_path, base_link_poses_path, ground_truth_poses_path)
 
 
 if __name__ == '__main__':
-    run_folders = filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling_output/test/*")))
-    last_run_folder = sorted(run_folders, key=lambda x: path.getmtime(x))[-1]
-    print("last run folder:", last_run_folder)
-    compute_localization_metrics(last_run_folder)
+    run_folders = filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling_output/test_1/*")))
+    # last_run_folder = sorted(run_folders, key=lambda x: path.getmtime(x))[-1]
+    # print("last run folder:", last_run_folder)
+    for run_folder in run_folders:
+        print_info("main: compute_localization_metrics in {}".format(run_folder))
+        compute_localization_metrics(path.expanduser(run_folder))
