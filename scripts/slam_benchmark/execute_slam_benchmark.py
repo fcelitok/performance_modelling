@@ -97,13 +97,15 @@ if __name__ == '__main__':
     configuration_combinations_dicts = map(dict, configuration_combinations_lists)
 
     num_combinations = len(configuration_combinations_dicts)
+    num_environments = len(environment_folders)
+    print_info("number of environments:               {}".format(num_environments))
     print_info("number of configuration combinations: {}".format(num_combinations))
-    print_info("number of runs per combination: {}".format(args.num_runs))
-    print_info("total number of runs: {}".format(args.num_runs * num_combinations))
+    print_info("number of repetition runs:            {}".format(args.num_runs))
+    print_info("total number of runs:                 {}".format(args.num_runs * num_combinations * num_environments))
 
     for _ in range(args.num_runs):
-        for environment_folder in environment_folders:
-            for components_configurations in configuration_combinations_dicts:
+        for components_configurations in configuration_combinations_dicts:
+            for environment_folder in environment_folders:
 
                 # find an available run folder path
                 i = 0
