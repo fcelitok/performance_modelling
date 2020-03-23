@@ -3,6 +3,7 @@
 
 from __future__ import print_function
 import os
+import sys
 from os import path
 try:
     from termcolor import colored
@@ -24,11 +25,15 @@ def backup_file_if_exists(target_path):
         os.rename(target_path, backup_path)
 
 
-def print_info(*args):
+def print_info(*args, **kwargs):
+    if 'replace_previous_line' in kwargs and kwargs['replace_previous_line']:
+        sys.stdout.write("\033[F\033[K"*kwargs['replace_previous_line'])
     print(colored(' '.join(map(str, args)), 'blue', attrs=['bold']))
 
 
-def print_error(*args):
+def print_error(*args, **kwargs):
+    if 'replace_previous_line' in kwargs and kwargs['replace_previous_line']:
+        sys.stdout.write("\033[F\033[K"*kwargs['replace_previous_line'])
     print(colored(' '.join(map(str, args)), 'red', attrs=['bold']))
 
 
