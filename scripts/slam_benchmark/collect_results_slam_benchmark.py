@@ -5,12 +5,12 @@ from __future__ import print_function
 
 import glob
 import argparse
-import itertools
 import os
 import pickle
 import sys
 import yaml
 import pandas as pd
+import numpy as np
 from collections import defaultdict
 from os import path
 
@@ -40,6 +40,10 @@ def get_metric_evaluator_mean(result_path):
 def get_yaml(yaml_file_path):
     with open(yaml_file_path) as yaml_file:
         return yaml.load(yaml_file)
+
+
+def aggregation_function(metric_values_list):
+    return np.mean(metric_values_list)
 
 
 if __name__ == '__main__':
@@ -118,8 +122,8 @@ if __name__ == '__main__':
             metrics_by_config['normalised_absolute_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error"))) / trajectory_length)
             metrics_by_config['normalised_absolute_correction_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error"))) / trajectory_length)
 
-            metrics_by_config['absolute_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error"))))
-            metrics_by_config['absolute_correction_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error"))))
+            # metrics_by_config['absolute_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error"))))
+            # metrics_by_config['absolute_correction_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error"))))
 
             metrics_by_config['normalised_ordered_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "ordered_r.csv")) / trajectory_length)
             metrics_by_config['normalised_ordered_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "ordered_t.csv")) / trajectory_length)
@@ -149,6 +153,7 @@ if __name__ == '__main__':
         with open(cache_file_path, 'w') as f:
             pickle.dump(cache, f)
 
+    parameter_names = ('particles', 'delta', 'maxUrange', 'environment')
     configs_sets = defaultdict(set)
     configs = set()
     for metric_name in metrics_by_config.keys():
@@ -160,10 +165,6 @@ if __name__ == '__main__':
             configs_sets['delta'].add(delta)
             configs_sets['maxUrange'].add(maxUrange)
             configs_sets['environment'].add(environment)
-
-    print(configs_sets)
-    for config in configs:
-        print(config)
 
     # plot metrics grouped by configuration
     plot_metrics_by_config = False
@@ -178,8 +179,8 @@ if __name__ == '__main__':
             fig.set_size_inches(*cm_to_stupid(30, 30))
             ax.margins(0.15)
             x_ticks = list()
-            for i, (config, group) in enumerate(metrics_by_config[metric_name].items()):
-                ax.plot([i] * len(group[metric_name]), group[metric_name], marker='_', linestyle='', ms=20, color='black')
+            for i, (config, metric_values) in enumerate(metrics_by_config[metric_name].items()):
+                ax.plot([i] * len(metric_values[metric_name]), metric_values[metric_name], marker='_', linestyle='', ms=20, color='black')
                 x_ticks.append(str(config))
 
             ax.set_title(metric_name)
@@ -190,12 +191,37 @@ if __name__ == '__main__':
             plt.close(fig)
 
     # plot metrics in function of single configuration parameters
-    print_info("plot metrics in function of single configuration parameters")
-    sorted_parameter_values = dict()
-    for parameter, values in configs_sets.items():
-        sorted_parameter_values[parameter] = sorted(list(values))
+    plot_metrics_by_parameter = True
+    if plot_metrics_by_parameter:
+        print_info("plot metrics by parameter")
 
-    for parameter, values in configs_sets.items():
-        other_parameters = set(configs_sets.keys()) - {parameter}
-        other_parameter_values = itertools.product(*map(lambda p: sorted_parameter_values[p], other_parameters))
-        print(parameter, values, list(other_parameter_values))
+        metrics_by_parameter_folder = path.join(output_folder, "metrics_by_parameter")
+        if not path.exists(metrics_by_parameter_folder):
+            os.makedirs(metrics_by_parameter_folder)
+
+        for i, metric_name in enumerate(metrics_by_config.keys()):
+
+            configs_df = pd.DataFrame.from_records(columns=parameter_names, data=list(set(metrics_by_config[metric_name].keys())))
+
+            for parameter_name in parameter_names:
+                # plot lines for same-parameter metric values
+                fig, ax = plt.subplots()
+                fig.set_size_inches(*cm_to_stupid(30, 30))
+                ax.margins(0.15)
+                ax.set_xlabel(parameter_name)
+                ax.set_ylabel(metric_name)
+
+                other_parameters = list(set(parameter_names) - {parameter_name})
+                grouped_parameter_values = configs_df.groupby(other_parameters)  # TODO order by parameter_name
+                for p, configs_group in list(grouped_parameter_values):
+                    sorted_configs_group = configs_group.sort_values(by=parameter_name)
+                    other_parameter_values = next(sorted_configs_group[other_parameters].itertuples(index=False, name='config'))
+                    parameter_values = sorted_configs_group[parameter_name]
+                    metric_values = map(lambda c: aggregation_function(metrics_by_config[metric_name][tuple(list(c))]), sorted_configs_group.itertuples(index=False))
+                    ax.plot(parameter_values, metric_values, marker='o', ms=5, label=str(other_parameter_values))
+
+                ax.legend()
+                fig.savefig(path.join(metrics_by_parameter_folder, "{}_by_{}.svg".format(metric_name, parameter_name)), bbox_inches='tight')
+                plt.close(fig)
+
+            print_info("plot metrics by parameter: {}%".format((i + 1)*100/len(metrics_by_config.keys())), replace_previous_line=True)
