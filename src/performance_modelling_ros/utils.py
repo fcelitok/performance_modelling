@@ -37,14 +37,22 @@ def print_error(*args, **kwargs):
     print(colored(' '.join(map(str, args)), 'red', attrs=['bold']))
 
 
+# noinspection PyBroadException
 def print_fatal(*args):
     text = ' '.join(map(str, args))
-    colored_text = colored(text, 'red', attrs=['bold', 'blink'])
-    b = colored('*', 'red', attrs=['bold', 'blink', 'reverse'])
-    n = len(text)
-    print(n)
-    print("{h_border}\n"
-          "{v_border} {spaces} {v_border}\n"
-          "{v_border} {text} {v_border}\n"
-          "{v_border} {spaces} {v_border}\n"
-          "{h_border}".format(h_border=b*(n+4), v_border=b, spaces=' '*n, text=colored_text))
+    try:
+        text_lines = text.split('\n')
+        print(text_lines)
+        n = max(map(len, text_lines))
+        print(n)
+        colored_text = colored(text, 'red', attrs=['bold', 'blink'])
+        b = colored('*', 'red', attrs=['bold', 'blink', 'reverse'])
+        print("{h_border}\n"
+              "{v_border} {spaces} {v_border}".format(h_border=b*(n+4), v_border=b, spaces=' '*n))
+        for line in text_lines:
+            colored_line = colored(line.ljust(n, ' '), 'red', attrs=['bold'])
+            print("{v_border} {line} {v_border}".format(v_border=b, line=colored_line))
+        print("{v_border} {spaces} {v_border}\n"
+              "{h_border}".format(h_border=b*(n+4), v_border=b, spaces=' '*n, text=colored_text))
+    except:
+        print(text)
