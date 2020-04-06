@@ -162,6 +162,9 @@ def compute_relative_localization_error(results_output_folder, log_output_folder
 
     # Select the biggest of the two
     n_samples = max(n_samples_t, n_samples_r)
+    if n_samples < 10:
+        print_error("compute_relative_localization_error: n_samples [{}] < 10".format(n_samples))
+        return
 
     print_info("compute_relative_localization_error: computing re relations with {n} samples".format(n=n_samples))
     with open(relations_re_file_path, "w") as relations_file_re:
