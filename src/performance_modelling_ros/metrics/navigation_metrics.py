@@ -29,14 +29,9 @@ def compute_cmd_vel_metrics(results_output_folder, cmd_vel_twists_file_path):
 
     result_file_path = path.join(results_output_folder, "cmd_vel_metrics.yaml")
     with open(result_file_path, "w") as result_file:
-        print("\n")
-        print(result_file_path)
-        print({'sum_linear_cmd': sum_linear_cmd,
-               'sum_angular_cmd': sum_angular_cmd,
-               'sum_combined_cmd': sum_combined_cmd})
-        yaml.dump({'sum_linear_cmd': sum_linear_cmd,
-                   'sum_angular_cmd': sum_angular_cmd,
-                   'sum_combined_cmd': sum_combined_cmd},
+        yaml.dump({'sum_linear_cmd': float(sum_linear_cmd),
+                   'sum_angular_cmd': float(sum_angular_cmd),
+                   'sum_combined_cmd': float(sum_combined_cmd)},
                   result_file, default_flow_style=False)
 
 
