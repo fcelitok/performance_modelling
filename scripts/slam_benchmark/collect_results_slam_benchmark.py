@@ -125,25 +125,47 @@ if __name__ == '__main__':
             # metrics_by_config['absolute_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error"))))
             # metrics_by_config['absolute_correction_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error"))))
 
-            metrics_by_config['normalised_ordered_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "ordered_r.csv")) / trajectory_length)
-            metrics_by_config['normalised_ordered_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "ordered_t.csv")) / trajectory_length)
-            metrics_by_config['normalised_re_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "re_r.csv")) / trajectory_length)
-            metrics_by_config['normalised_re_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "re_t.csv")) / trajectory_length)
+            ordered_r_path = path.join(metric_results_folder, "base_link_poses", "ordered_r.csv")
+            ordered_t_path = path.join(metric_results_folder, "base_link_poses", "ordered_t.csv")
+            re_r_path = path.join(metric_results_folder, "base_link_poses", "re_r.csv")
+            re_t_path = path.join(metric_results_folder, "base_link_poses", "re_t.csv")
 
-            metrics_by_config['normalised_correction_ordered_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_correction_poses", "ordered_r.csv")) / trajectory_length)
-            metrics_by_config['normalised_correction_ordered_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_correction_poses", "ordered_t.csv")) / trajectory_length)
-            metrics_by_config['normalised_correction_re_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_correction_poses", "re_r.csv")) / trajectory_length)
-            metrics_by_config['normalised_correction_re_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_correction_poses", "re_t.csv")) / trajectory_length)
+            correction_ordered_r_path = path.join(metric_results_folder, "base_link_correction_poses", "ordered_r.csv")
+            correction_ordered_t_path = path.join(metric_results_folder, "base_link_correction_poses", "ordered_t.csv")
+            correction_re_r_path = path.join(metric_results_folder, "base_link_correction_poses", "re_r.csv")
+            correction_re_t_path = path.join(metric_results_folder, "base_link_correction_poses", "re_t.csv")
 
-            metrics_by_config['ordered_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "ordered_r.csv")))
-            metrics_by_config['ordered_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "ordered_t.csv")))
-            metrics_by_config['re_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "re_r.csv")))
-            metrics_by_config['re_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_poses", "re_t.csv")))
+            if path.exists(ordered_r_path):
+                metrics_by_config['normalised_ordered_r'][config].append(get_metric_evaluator_mean(ordered_r_path) / trajectory_length)
+                metrics_by_config['ordered_r'][config].append(get_metric_evaluator_mean(ordered_r_path))
 
-            metrics_by_config['correction_ordered_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_correction_poses", "ordered_r.csv")))
-            metrics_by_config['correction_ordered_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_correction_poses", "ordered_t.csv")))
-            metrics_by_config['correction_re_r'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_correction_poses", "re_r.csv")))
-            metrics_by_config['correction_re_t'][config].append(get_metric_evaluator_mean(path.join(metric_results_folder, "base_link_correction_poses", "re_t.csv")))
+            if path.exists(ordered_t_path):
+                metrics_by_config['normalised_ordered_t'][config].append(get_metric_evaluator_mean(ordered_t_path) / trajectory_length)
+                metrics_by_config['ordered_t'][config].append(get_metric_evaluator_mean(ordered_t_path))
+
+            if path.exists(re_r_path):
+                metrics_by_config['normalised_re_r'][config].append(get_metric_evaluator_mean(re_r_path) / trajectory_length)
+                metrics_by_config['re_r'][config].append(get_metric_evaluator_mean(re_r_path))
+
+            if path.exists(re_t_path):
+                metrics_by_config['normalised_re_t'][config].append(get_metric_evaluator_mean(re_t_path) / trajectory_length)
+                metrics_by_config['re_t'][config].append(get_metric_evaluator_mean(re_t_path))
+
+            if path.exists(correction_ordered_r_path):
+                metrics_by_config['normalised_correction_ordered_r'][config].append(get_metric_evaluator_mean(correction_ordered_r_path) / trajectory_length)
+                metrics_by_config['correction_ordered_r'][config].append(get_metric_evaluator_mean(correction_ordered_r_path))
+
+            if path.exists(correction_ordered_t_path):
+                metrics_by_config['normalised_correction_ordered_t'][config].append(get_metric_evaluator_mean(correction_ordered_t_path) / trajectory_length)
+                metrics_by_config['correction_ordered_t'][config].append(get_metric_evaluator_mean(correction_ordered_t_path))
+
+            if path.exists(correction_re_r_path):
+                metrics_by_config['normalised_correction_re_r'][config].append(get_metric_evaluator_mean(correction_re_r_path) / trajectory_length)
+                metrics_by_config['correction_re_r'][config].append(get_metric_evaluator_mean(correction_re_r_path))
+
+            if path.exists(correction_re_t_path):
+                metrics_by_config['normalised_correction_re_t'][config].append(get_metric_evaluator_mean(correction_re_t_path) / trajectory_length)
+                metrics_by_config['correction_re_t'][config].append(get_metric_evaluator_mean(correction_re_t_path))
 
             print_info("reading run data: {}%".format((i + 1)*100/len(run_folders)), replace_previous_line=True)
 
@@ -206,17 +228,19 @@ if __name__ == '__main__':
             for parameter_name in parameter_names:
                 # plot lines for same-parameter metric values
                 fig, ax = plt.subplots()
-                fig.set_size_inches(*cm_to_stupid(30, 30))
+                fig.set_size_inches(*cm_to_stupid(20, 20))
                 ax.margins(0.15)
                 ax.set_xlabel(parameter_name)
                 ax.set_ylabel(metric_name)
 
                 other_parameters = list(set(parameter_names) - {parameter_name})
-                grouped_parameter_values = configs_df.groupby(other_parameters)  # TODO order by parameter_name
+                grouped_parameter_values = configs_df.sort_values(by=other_parameters).groupby(other_parameters)
                 for p, configs_group in list(grouped_parameter_values):
                     sorted_configs_group = configs_group.sort_values(by=parameter_name)
                     other_parameter_values = next(sorted_configs_group[other_parameters].itertuples(index=False, name='config'))
                     parameter_values = sorted_configs_group[parameter_name]
+                    # if len(parameter_values) < 3:
+                    #     continue
                     metric_values = map(lambda c: aggregation_function(metrics_by_config[metric_name][tuple(list(c))]), sorted_configs_group.itertuples(index=False))
                     ax.plot(parameter_values, metric_values, marker='o', ms=5, label=str(other_parameter_values))
 

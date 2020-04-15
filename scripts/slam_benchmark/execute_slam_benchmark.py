@@ -14,7 +14,7 @@ from os import path
 import itertools
 import roslaunch
 
-from performance_modelling_ros.utils import print_info, print_error
+from performance_modelling_ros.utils import print_info, print_error, print_fatal
 from slam_benchmark_supervisor_ros.slam_benchmark_run import BenchmarkRun
 
 if __name__ == '__main__':
@@ -142,11 +142,13 @@ if __name__ == '__main__':
                         print_info("benchmark: run {run_index} completed".format(run_index=i))
 
                 except roslaunch.RLException:
-                    print_error(traceback.format_exc())
+                    print_fatal(traceback.format_exc())
                     sys.exit(0)
                 except IOError:
-                    print_error(traceback.format_exc())
+                    print_fatal(traceback.format_exc())
                 except ValueError:
-                    print_error(traceback.format_exc())
+                    print_fatal(traceback.format_exc())
+                except ZeroDivisionError:
+                    print_fatal(traceback.format_exc())
 
     print_info("benchmark: finished")

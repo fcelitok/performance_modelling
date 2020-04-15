@@ -3,11 +3,8 @@ supervisor_configuration: slam_benchmark_supervisor/slam_benchmark_supervisor.ya
 
 components_configurations:
   gmapping:
-    - gmapping/gmapping_4.yaml
-    - gmapping/gmapping_5.yaml
-    - gmapping/gmapping_6.yaml
-    - gmapping/gmapping_7.yaml
-    - gmapping/gmapping_8.yaml
-    - gmapping/gmapping_9.yaml
+    - gmapping/gmapping_10.yaml
+    - gmapping/gmapping_11.yaml
+    - gmapping/gmapping_12.yaml
   move_base: [move_base/move_base_1.yaml]
   explore_lite: [explore_lite/explore_lite_1.yaml]
