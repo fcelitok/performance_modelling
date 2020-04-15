@@ -47,30 +47,43 @@ def aggregation_function(metric_values_list):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description='Execute the benchmark')
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description='Execute the analysis of the benchmark results.')
 
     parser.add_argument('-r', dest='base_run_folder',
-                        help='Folder containing the result the runs.',
+                        help='Folder containing the result the runs. Defaults to ~/ds/performance_modelling_output/test_1/',
                         type=str,
                         default="~/ds/performance_modelling_output/test_1/",
                         required=False)
 
     parser.add_argument('-o', dest='output_folder',
-                        help='Folder in which the results will be placed.',
+                        help='Folder in which the results will be placed. Defaults to ~/ds/performance_modelling_analysis/test_1/',
                         type=str,
                         default="~/ds/performance_modelling_analysis/test_1/",
                         required=False)
 
     parser.add_argument('-c', dest='cache_file',
-                        help='Folder in which the cache will be placed.',
-                        type=str,
-                        default="~/ds/performance_modelling_analysis_cache",
+                        help='Cache file path. Defaults to ~/ds/performance_modelling_analysis_cache.pkl',
+                        action='store_const',
+                        const="~/ds/performance_modelling_analysis_cache.pkl",
+                        default=None,
+                        required=False)
+
+    parser.add_argument('-i', dest='invalidate_cache',
+                        help='Invalidate the cache. Re-read the run data and update the cache file.',
+                        action='store_true',
+                        default=False,
                         required=False)
 
     args = parser.parse_args()
     base_run_folder = path.expanduser(args.base_run_folder)
     output_folder = path.expanduser(args.output_folder)
-    cache_file_path = path.expanduser(args.cache_file)
+    invalidate_cache = args.invalidate_cache
+    if args.cache_file is not None:
+        cache_file_path = path.expanduser(args.cache_file)
+    else:
+        cache_file_path = None
+        if invalidate_cache:
+            print_error("Flag invalidate_cache is set but no cache file is provided.")
 
     if not path.isdir(base_run_folder):
         print_error("base_run_folder does not exists or is not a directory".format(base_run_folder))
@@ -82,7 +95,7 @@ if __name__ == '__main__':
     run_folders = filter(path.isdir, glob.glob(path.abspath(base_run_folder) + '/*'))
     print("base_run_folder:", base_run_folder)
 
-    if path.exists(cache_file_path):
+    if not invalidate_cache and cache_file_path is not None and path.exists(cache_file_path):
         print_info("reading run data from cache")
         with open(cache_file_path) as f:
             cache = pickle.load(f)
@@ -122,47 +135,48 @@ if __name__ == '__main__':
             metrics_by_config['normalised_absolute_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error"))) / trajectory_length)
             metrics_by_config['normalised_absolute_correction_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error"))) / trajectory_length)
 
-            # metrics_by_config['absolute_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error"))))
-            # metrics_by_config['absolute_correction_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error"))))
+            cmd_vel_metrics_path = path.join(metric_results_folder, "cmd_vel_metrics.yaml")
+            if path.exists(cmd_vel_metrics_path):
+                metrics_by_config['normalised_linear_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_linear_cmd'] / trajectory_length)
+                metrics_by_config['normalised_angular_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_angular_cmd'] / trajectory_length)
+                metrics_by_config['normalised_combined_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_combined_cmd'] / trajectory_length)
 
             ordered_r_path = path.join(metric_results_folder, "base_link_poses", "ordered_r.csv")
-            ordered_t_path = path.join(metric_results_folder, "base_link_poses", "ordered_t.csv")
-            re_r_path = path.join(metric_results_folder, "base_link_poses", "re_r.csv")
-            re_t_path = path.join(metric_results_folder, "base_link_poses", "re_t.csv")
-
-            correction_ordered_r_path = path.join(metric_results_folder, "base_link_correction_poses", "ordered_r.csv")
-            correction_ordered_t_path = path.join(metric_results_folder, "base_link_correction_poses", "ordered_t.csv")
-            correction_re_r_path = path.join(metric_results_folder, "base_link_correction_poses", "re_r.csv")
-            correction_re_t_path = path.join(metric_results_folder, "base_link_correction_poses", "re_t.csv")
-
             if path.exists(ordered_r_path):
                 metrics_by_config['normalised_ordered_r'][config].append(get_metric_evaluator_mean(ordered_r_path) / trajectory_length)
                 metrics_by_config['ordered_r'][config].append(get_metric_evaluator_mean(ordered_r_path))
 
+            ordered_t_path = path.join(metric_results_folder, "base_link_poses", "ordered_t.csv")
             if path.exists(ordered_t_path):
                 metrics_by_config['normalised_ordered_t'][config].append(get_metric_evaluator_mean(ordered_t_path) / trajectory_length)
                 metrics_by_config['ordered_t'][config].append(get_metric_evaluator_mean(ordered_t_path))
 
+            re_r_path = path.join(metric_results_folder, "base_link_poses", "re_r.csv")
             if path.exists(re_r_path):
                 metrics_by_config['normalised_re_r'][config].append(get_metric_evaluator_mean(re_r_path) / trajectory_length)
                 metrics_by_config['re_r'][config].append(get_metric_evaluator_mean(re_r_path))
 
+            re_t_path = path.join(metric_results_folder, "base_link_poses", "re_t.csv")
             if path.exists(re_t_path):
                 metrics_by_config['normalised_re_t'][config].append(get_metric_evaluator_mean(re_t_path) / trajectory_length)
                 metrics_by_config['re_t'][config].append(get_metric_evaluator_mean(re_t_path))
 
+            correction_ordered_r_path = path.join(metric_results_folder, "base_link_correction_poses", "ordered_r.csv")
             if path.exists(correction_ordered_r_path):
                 metrics_by_config['normalised_correction_ordered_r'][config].append(get_metric_evaluator_mean(correction_ordered_r_path) / trajectory_length)
                 metrics_by_config['correction_ordered_r'][config].append(get_metric_evaluator_mean(correction_ordered_r_path))
 
+            correction_ordered_t_path = path.join(metric_results_folder, "base_link_correction_poses", "ordered_t.csv")
             if path.exists(correction_ordered_t_path):
                 metrics_by_config['normalised_correction_ordered_t'][config].append(get_metric_evaluator_mean(correction_ordered_t_path) / trajectory_length)
                 metrics_by_config['correction_ordered_t'][config].append(get_metric_evaluator_mean(correction_ordered_t_path))
 
+            correction_re_r_path = path.join(metric_results_folder, "base_link_correction_poses", "re_r.csv")
             if path.exists(correction_re_r_path):
                 metrics_by_config['normalised_correction_re_r'][config].append(get_metric_evaluator_mean(correction_re_r_path) / trajectory_length)
                 metrics_by_config['correction_re_r'][config].append(get_metric_evaluator_mean(correction_re_r_path))
 
+            correction_re_t_path = path.join(metric_results_folder, "base_link_correction_poses", "re_t.csv")
             if path.exists(correction_re_t_path):
                 metrics_by_config['normalised_correction_re_t'][config].append(get_metric_evaluator_mean(correction_re_t_path) / trajectory_length)
                 metrics_by_config['correction_re_t'][config].append(get_metric_evaluator_mean(correction_re_t_path))
@@ -170,10 +184,11 @@ if __name__ == '__main__':
             print_info("reading run data: {}%".format((i + 1)*100/len(run_folders)), replace_previous_line=True)
 
         # save cache
-        metrics_by_config = dict(metrics_by_config)
-        cache = {'metrics_by_config': metrics_by_config}
-        with open(cache_file_path, 'w') as f:
-            pickle.dump(cache, f)
+        if cache_file_path is not None:
+            metrics_by_config = dict(metrics_by_config)
+            cache = {'metrics_by_config': metrics_by_config}
+            with open(cache_file_path, 'w') as f:
+                pickle.dump(cache, f)
 
     parameter_names = ('particles', 'delta', 'maxUrange', 'environment')
     configs_sets = defaultdict(set)
@@ -249,3 +264,6 @@ if __name__ == '__main__':
                 plt.close(fig)
 
             print_info("plot metrics by parameter: {}%".format((i + 1)*100/len(metrics_by_config.keys())), replace_previous_line=True)
+
+# TODO plot metric by metric and all other params
+# TODO plot metric sensitivity by param
