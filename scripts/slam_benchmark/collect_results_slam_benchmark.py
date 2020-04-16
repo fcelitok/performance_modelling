@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from performance_modelling_ros.utils import print_info, print_error
 
 
-def cm_to_stupid(*argv):
+def cm_to_body_parts(*argv):
     inch = 2.54
     if isinstance(argv[0], tuple):
         return tuple(x / inch for x in argv[0])
@@ -100,8 +100,12 @@ if __name__ == '__main__':
         with open(cache_file_path) as f:
             cache = pickle.load(f)
         metrics_by_config = cache['metrics_by_config']
+        metrics_by_run = cache['metrics_by_run']
+        metric_names = cache['metric_names']
     else:
         metrics_by_config = defaultdict(lambda: defaultdict(list))
+        metrics_by_run = list()
+        metric_names = set()
 
         # collect results from each run
         print_info("reading run data")
@@ -115,6 +119,8 @@ if __name__ == '__main__':
                 print_error("run_info file does not exists [{}]".format(run_info_file_path))
                 continue
 
+            run_record = dict()
+
             run_info = get_yaml(run_info_file_path)
 
             gmapping_configuration_file_path = run_info['components_configuration']['gmapping']
@@ -126,20 +132,46 @@ if __name__ == '__main__':
             environment_name = path.basename(run_info['environment_folder'])
             config = (particles, delta, maxUrange, environment_name)
 
-            metrics_by_config['normalised_explored_area'][config].append(get_yaml(path.join(metric_results_folder, "normalised_explored_area.yaml"))['normalised_explored_area'])
-            metrics_by_config['explored_area'][config].append(get_yaml(path.join(metric_results_folder, "normalised_explored_area.yaml"))['result_map']['area']['free'])
+            run_record['config'] = config
 
-            trajectory_length = float(get_simple_value(path.join(metric_results_folder, "trajectory_length")))
-            metrics_by_config['trajectory_length'][config].append(trajectory_length)
+            explored_area_path = path.join(metric_results_folder, "normalised_explored_area.yaml")
+            if path.exists(explored_area_path):
+                metrics_by_config['normalised_explored_area'][config].append(get_yaml(explored_area_path)['normalised_explored_area'])
+                run_record['normalised_explored_area'] = get_yaml(explored_area_path)['normalised_explored_area']
+                metric_names.add('normalised_explored_area')
 
-            metrics_by_config['normalised_absolute_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error"))) / trajectory_length)
-            metrics_by_config['normalised_absolute_correction_error'][config].append(float(get_simple_value(path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error"))) / trajectory_length)
+                metrics_by_config['explored_area'][config].append(get_yaml(explored_area_path)['result_map']['area']['free'])
+
+            trajectory_length_path = path.join(metric_results_folder, "trajectory_length")
+            if path.exists(trajectory_length_path):
+                trajectory_length = float(get_simple_value(trajectory_length_path))
+                metrics_by_config['trajectory_length'][config].append(trajectory_length)
+                run_record['trajectory_length'] = trajectory_length
+                metric_names.add('trajectory_length')
+            else:
+                continue
+
+            absolute_error_path = path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error")
+            if path.exists(absolute_error_path):
+                metrics_by_config['normalised_absolute_error'][config].append(float(get_simple_value(absolute_error_path)) / trajectory_length)
+
+            absolute_correction_error = path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error")
+            if path.exists(absolute_correction_error):
+                metrics_by_config['normalised_absolute_correction_error'][config].append(float(get_simple_value(absolute_correction_error)) / trajectory_length)
+                run_record['normalised_absolute_correction_error'] = float(get_simple_value(absolute_correction_error)) / trajectory_length
+                metric_names.add('normalised_absolute_correction_error')
 
             cmd_vel_metrics_path = path.join(metric_results_folder, "cmd_vel_metrics.yaml")
             if path.exists(cmd_vel_metrics_path):
                 metrics_by_config['normalised_linear_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_linear_cmd'] / trajectory_length)
                 metrics_by_config['normalised_angular_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_angular_cmd'] / trajectory_length)
                 metrics_by_config['normalised_combined_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_combined_cmd'] / trajectory_length)
+                run_record['normalised_linear_command'] = get_yaml(cmd_vel_metrics_path)['sum_linear_cmd'] / trajectory_length
+                metric_names.add('normalised_linear_command')
+                run_record['normalised_angular_command'] = get_yaml(cmd_vel_metrics_path)['sum_angular_cmd'] / trajectory_length
+                metric_names.add('normalised_angular_command')
+                run_record['normalised_combined_command'] = get_yaml(cmd_vel_metrics_path)['sum_combined_cmd'] / trajectory_length
+                metric_names.add('normalised_combined_command')
 
             ordered_r_path = path.join(metric_results_folder, "base_link_poses", "ordered_r.csv")
             if path.exists(ordered_r_path):
@@ -174,28 +206,35 @@ if __name__ == '__main__':
             correction_re_r_path = path.join(metric_results_folder, "base_link_correction_poses", "re_r.csv")
             if path.exists(correction_re_r_path):
                 metrics_by_config['normalised_correction_re_r'][config].append(get_metric_evaluator_mean(correction_re_r_path) / trajectory_length)
+                run_record['normalised_correction_re_r'] = get_metric_evaluator_mean(correction_re_r_path) / trajectory_length
+                metric_names.add('normalised_correction_re_r')
                 metrics_by_config['correction_re_r'][config].append(get_metric_evaluator_mean(correction_re_r_path))
 
             correction_re_t_path = path.join(metric_results_folder, "base_link_correction_poses", "re_t.csv")
             if path.exists(correction_re_t_path):
                 metrics_by_config['normalised_correction_re_t'][config].append(get_metric_evaluator_mean(correction_re_t_path) / trajectory_length)
+                run_record['normalised_correction_re_t'] = get_metric_evaluator_mean(correction_re_t_path) / trajectory_length
+                metric_names.add('normalised_correction_re_t')
                 metrics_by_config['correction_re_t'][config].append(get_metric_evaluator_mean(correction_re_t_path))
+
+            metrics_by_run.append(run_record)
+            del run_record
 
             print_info("reading run data: {}%".format((i + 1)*100/len(run_folders)), replace_previous_line=True)
 
         # save cache
         if cache_file_path is not None:
             metrics_by_config = dict(metrics_by_config)
-            cache = {'metrics_by_config': metrics_by_config}
+            cache = {'metrics_by_config': metrics_by_config, 'metrics_by_run': metrics_by_run, 'metric_names': metric_names}
             with open(cache_file_path, 'w') as f:
                 pickle.dump(cache, f)
 
     parameter_names = ('particles', 'delta', 'maxUrange', 'environment')
     configs_sets = defaultdict(set)
-    configs = set()
+    metrics_x_y_by_config = set()
     for metric_name in metrics_by_config.keys():
         for config in metrics_by_config[metric_name].keys():
-            configs.add(config)
+            metrics_x_y_by_config.add(config)
 
             particles, delta, maxUrange, environment = config
             configs_sets['particles'].add(particles)
@@ -213,7 +252,7 @@ if __name__ == '__main__':
 
         for metric_name in metrics_by_config.keys():
             fig, ax = plt.subplots()
-            fig.set_size_inches(*cm_to_stupid(30, 30))
+            fig.set_size_inches(*cm_to_body_parts(30, 30))
             ax.margins(0.15)
             x_ticks = list()
             for i, (config, metric_values) in enumerate(metrics_by_config[metric_name].items()):
@@ -228,7 +267,7 @@ if __name__ == '__main__':
             plt.close(fig)
 
     # plot metrics in function of single configuration parameters
-    plot_metrics_by_parameter = True
+    plot_metrics_by_parameter = False
     if plot_metrics_by_parameter:
         print_info("plot metrics by parameter")
 
@@ -243,7 +282,7 @@ if __name__ == '__main__':
             for parameter_name in parameter_names:
                 # plot lines for same-parameter metric values
                 fig, ax = plt.subplots()
-                fig.set_size_inches(*cm_to_stupid(20, 20))
+                fig.set_size_inches(*cm_to_body_parts(20, 20))
                 ax.margins(0.15)
                 ax.set_xlabel(parameter_name)
                 ax.set_ylabel(metric_name)
@@ -265,5 +304,43 @@ if __name__ == '__main__':
 
             print_info("plot metrics by parameter: {}%".format((i + 1)*100/len(metrics_by_config.keys())), replace_previous_line=True)
 
-# TODO plot metric by metric and all other params
-# TODO plot metric sensitivity by param
+    # plot metrics in function of other metrics
+    plot_metrics_by_metric = True
+    if plot_metrics_by_metric:
+        print_info("plot metrics by metric")
+
+        metrics_by_metric_folder = path.join(output_folder, "metrics_by_metric")
+        if not path.exists(metrics_by_metric_folder):
+            os.makedirs(metrics_by_metric_folder)
+
+        progress_counter = 0
+        progress_total = len(metric_names)**2 - len(metric_names)
+
+        for metric_x_name in metric_names:
+            for metric_y_name in metric_names - {metric_x_name}:
+
+                fig, ax = plt.subplots()
+                fig.set_size_inches(*cm_to_body_parts(40, 40))
+                ax.margins(0.15)
+                ax.set_xlabel(metric_x_name)
+                ax.set_ylabel(metric_y_name)
+
+                # get the configurations associated with metric x and y, grouped by config
+                metrics_x_y_by_config = defaultdict(lambda: {'x': list(), 'y': list()})
+                for run_record in metrics_by_run:
+                    if metric_x_name in run_record and metric_y_name in run_record:
+                        metrics_x_y_by_config[run_record['config']]['x'].append(run_record[metric_x_name])
+                        metrics_x_y_by_config[run_record['config']]['y'].append(run_record[metric_y_name])
+
+                # plot scatter graph for same-config metric x, y values (each config has a different color)
+                for config, metric_values in metrics_x_y_by_config.items():
+                    ax.scatter(metric_values['x'], metric_values['y'])
+
+                fig_name = "{x}_to_{y}.svg".format(y=metric_y_name, x=metric_x_name)
+                fig.savefig(path.join(metrics_by_metric_folder, fig_name), bbox_inches='tight')
+                plt.close(fig)
+
+                progress_counter += 1
+                print_info("plot metrics by parameter: {}%".format(progress_counter * 100 / progress_total), replace_previous_line=True)
+
+    # TODO plot metric sensitivity by param
