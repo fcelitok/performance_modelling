@@ -14,6 +14,7 @@ import rospy
 from performance_modelling_ros.utils import backup_file_if_exists, print_info, print_error
 from performance_modelling_ros import Component
 from performance_modelling_ros.metrics.localization_metrics import compute_localization_metrics
+from performance_modelling_ros.metrics.navigation_metrics import compute_navigation_metrics
 from performance_modelling_ros.metrics.map_metrics import compute_map_metrics
 from performance_modelling_ros.visualisation.trajectory_visualisation import save_trajectories_plot
 
@@ -145,8 +146,13 @@ class BenchmarkRun(object):
 
         self.log(event="start_compute_map_metrics")
         compute_map_metrics(self.run_output_folder, self.stage_world_folder)
+
         self.log(event="start_compute_localization_metrics")
         compute_localization_metrics(self.run_output_folder)
+
+        self.log(event="start_compute_navigation_metrics")
+        compute_navigation_metrics(self.run_output_folder)
+
         print_info("execute_run: metrics computation completed")
 
         self.log(event="start_save_trajectories_plot")
