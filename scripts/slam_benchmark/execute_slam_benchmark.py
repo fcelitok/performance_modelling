@@ -114,7 +114,7 @@ if __name__ == '__main__':
                     i += 1
                     run_folder = path.join(base_run_folder, "run_{run_number}".format(run_number=i))
 
-                print_info("benchmark: starting run {run_index}".format(run_index=i))
+                print_info("\n\n\nbenchmark: starting run {run_index}".format(run_index=i))
                 print_info("\tenvironment_folder:", environment_folder)
                 print_info("\tsupervisor_configuration:", supervisor_configuration_path)
                 print_info("\tcomponents_configurations:")
