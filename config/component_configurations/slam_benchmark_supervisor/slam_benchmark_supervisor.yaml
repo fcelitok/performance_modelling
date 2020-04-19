@@ -12,3 +12,4 @@ base_link_ground_truth_topic: /base_pose_ground_truth
 gmapping_correction_topic: /gmapping/correction
 cmd_vel_topic: /cmd_vel
 map_topic: /map
+scan_topic: /base_scan

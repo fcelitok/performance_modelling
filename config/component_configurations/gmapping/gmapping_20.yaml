@@ -1,5 +1,5 @@
-particles: 80  # high
-delta: 0.05    # low
+particles: 20  # very low
+delta: 0.03    # high
 maxUrange: 15  # low
 
 xmin: -3

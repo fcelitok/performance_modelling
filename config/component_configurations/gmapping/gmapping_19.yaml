@@ -1,4 +1,4 @@
-particles: 80  # high
+particles: 20  # very low
 delta: 0.05    # low
 maxUrange: 15  # low
 
