@@ -14,6 +14,7 @@ import tf.transformations
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry, OccupancyGrid
 from image_utils import save_map_image, map_changed
+from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header, Bool
 
 import os
@@ -31,6 +32,7 @@ class SlamBenchmarkSupervisor:
         gmapping_correction_topic = rospy.get_param('~gmapping_correction_topic')
         cmd_vel_topic = rospy.get_param('~cmd_vel_topic')
         map_topic = rospy.get_param('~map_topic')
+        scan_topic = rospy.get_param('~scan_topic')
 
         # run parameters
         self.run_timeout = rospy.get_param('~run_timeout')
@@ -67,7 +69,7 @@ class SlamBenchmarkSupervisor:
         if not path.exists(self.ps_output_folder):
             os.makedirs(self.ps_output_folder)
 
-        # open files for metric computation
+        # file paths for benchmark data
         self.base_link_correction_poses_file_path = path.join(self.benchmark_data_folder, "base_link_correction_poses")
         self.base_link_poses_file_path = path.join(self.benchmark_data_folder, "base_link_poses")
         backup_file_if_exists(self.base_link_poses_file_path)
@@ -77,6 +79,9 @@ class SlamBenchmarkSupervisor:
 
         self.cmd_vel_twists_file_path = path.join(self.benchmark_data_folder, "cmd_vel_twists")
         backup_file_if_exists(self.cmd_vel_twists_file_path)
+
+        self.scans_file_path = path.join(self.benchmark_data_folder, "scans")
+        backup_file_if_exists(self.scans_file_path)
 
         self.run_events_file_path = path.join(self.benchmark_data_folder, "run_events.csv")
         self.init_run_events_file()
@@ -93,6 +98,7 @@ class SlamBenchmarkSupervisor:
         self.gmapping_correction_subscriber = rospy.Subscriber(gmapping_correction_topic, Header, self.gmapping_correction_header_callback, queue_size=10)
         self.cmd_vel_twist_subscriber = rospy.Subscriber(cmd_vel_topic, Twist, self.cmd_vel_callback, queue_size=1)
         self.map_subscriber = rospy.Subscriber(map_topic, OccupancyGrid, self.map_callback, queue_size=1)
+        self.scan_subscriber = rospy.Subscriber(scan_topic, LaserScan, self.scan_callback, queue_size=1)
         rospy.on_shutdown(self.shutdown_callback)
 
     def loop(self):
@@ -153,6 +159,17 @@ class SlamBenchmarkSupervisor:
 
     def map_callback(self, occupancy_grid_msg):
         self.last_map_msg = occupancy_grid_msg
+
+    def scan_callback(self, laser_scan_msg):
+        with open(self.scans_file_path, 'a') as scans_file:
+            scans_file.write("{t}, {angle_min}, {angle_max}, {angle_increment}, {range_min}, {range_max}, {ranges}\n".format(
+                t=laser_scan_msg.header.stamp.to_sec(),
+                angle_min=laser_scan_msg.angle_min,
+                angle_max=laser_scan_msg.angle_max,
+                angle_increment=laser_scan_msg.angle_increment,
+                range_min=laser_scan_msg.range_min,
+                range_max=laser_scan_msg.range_max,
+                ranges=', '.join(map(str, laser_scan_msg.ranges))))
 
     def gmapping_correction_header_callback(self, header_msg):
         try:
