@@ -50,23 +50,31 @@ class BenchmarkRun(object):
 
         # write info about the run to file
         run_info_dict = dict()
-        run_info_dict["components_configuration"] = component_configuration_files
-        run_info_dict["supervisor_configuration"] = supervisor_configuration_file
+        run_info_dict["original_components_configuration"] = component_configuration_files
+        run_info_dict["original_supervisor_configuration"] = supervisor_configuration_file
         run_info_dict["environment_folder"] = stage_dataset_folder
         run_info_dict["run_folder"] = self.run_output_folder
         run_info_dict["run_id"] = self.run_id
-        with open(run_info_file_path, 'w') as run_info_file:
-            yaml.dump(run_info_dict, run_info_file, default_flow_style=False)
 
         # copy the configuration to the run folder
+        component_configuration_copy_relative_paths = dict()
         for component_name, configuration_path in self.component_configuration_files.items():
-            configuration_copy_path = path.join(run_configuration_copy_path, "{}_{}".format(component_name, path.basename(configuration_path)))
-            backup_file_if_exists(configuration_copy_path)
-            shutil.copyfile(configuration_path, configuration_copy_path)
+            configuration_copy_relative_path = path.join("components_configuration", "{}_{}".format(component_name, path.basename(configuration_path)))
+            configuration_copy_absolute_path = path.join(self.run_output_folder, configuration_copy_relative_path)
+            component_configuration_copy_relative_paths[component_name] = configuration_copy_relative_path
+            backup_file_if_exists(configuration_copy_absolute_path)
+            shutil.copyfile(configuration_path, configuration_copy_absolute_path)
 
-        supervisor_configuration_copy_path = path.join(run_configuration_copy_path, "{}_{}".format("supervisor", path.basename(self.supervisor_configuration_file)))
-        backup_file_if_exists(supervisor_configuration_copy_path)
-        shutil.copyfile(self.supervisor_configuration_file, supervisor_configuration_copy_path)
+        supervisor_configuration_copy_relative_path = path.join("components_configuration", "{}_{}".format("supervisor", path.basename(self.supervisor_configuration_file)))
+        supervisor_configuration_copy_absolute_path = path.join(self.run_output_folder, supervisor_configuration_copy_relative_path)
+        backup_file_if_exists(supervisor_configuration_copy_absolute_path)
+        shutil.copyfile(self.supervisor_configuration_file, supervisor_configuration_copy_absolute_path)
+
+        run_info_dict["local_components_configuration"] = component_configuration_copy_relative_paths
+        run_info_dict["local_supervisor_configuration"] = supervisor_configuration_copy_relative_path
+
+        with open(run_info_file_path, 'w') as run_info_file:
+            yaml.dump(run_info_dict, run_info_file, default_flow_style=False)
 
     def log(self, event):
 
