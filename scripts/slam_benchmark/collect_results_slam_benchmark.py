@@ -70,12 +70,6 @@ if __name__ == '__main__':
                         default=False,
                         required=False)
 
-    parser.add_argument('-a', dest='aggregation_function_name',
-                        help='Which function to use to aggregate performance values of multiple runs. Defaults to mean.',
-                        type=str,
-                        default='mean',
-                        required=False)
-
     parser.add_argument('--plot-everything', dest='plot_everything',
                         help='Plot everything.',
                         action='store_true',
@@ -123,9 +117,6 @@ if __name__ == '__main__':
 
     if not path.exists(output_folder):
         os.makedirs(output_folder)
-
-    aggregation_function_name = args.aggregation_function_name
-    aggregation_function = {'std': np.std, 'mean': np.mean, 'median': np.median, 'min': np.min, 'max': np.max}[aggregation_function_name]
 
     run_folders = filter(path.isdir, glob.glob(path.abspath(base_run_folder) + '/*'))
     print("base_run_folder:", base_run_folder)
@@ -335,40 +326,40 @@ if __name__ == '__main__':
 
     # plot metrics in function of single configuration parameters
     if args.plot_everything or args.plot_metrics_by_parameter:
-        print_info("plot metrics by parameter")
+        aggregation_function = {'std': np.std, 'mean': np.mean, 'median': np.median, 'min': np.min, 'max': np.max}
+        for aggregation_function_name in aggregation_function.keys():
 
-        metrics_by_parameter_folder = path.join(output_folder, "metrics_by_parameter_using_{}".format(aggregation_function_name))
-        if not path.exists(metrics_by_parameter_folder):
-            os.makedirs(metrics_by_parameter_folder)
+            print_info("plot metrics by parameter using {a}".format(a=aggregation_function_name))
+            metrics_by_parameter_folder = path.join(output_folder, "metrics_by_parameter_using_{a}".format(a=aggregation_function_name))
+            if not path.exists(metrics_by_parameter_folder):
+                os.makedirs(metrics_by_parameter_folder)
 
-        for i, metric_name in enumerate(metrics_by_config.keys()):
+            for i, metric_name in enumerate(metrics_by_config.keys()):
 
-            configs_df = pd.DataFrame.from_records(columns=parameter_names, data=list(set(metrics_by_config[metric_name].keys())))
+                configs_df = pd.DataFrame.from_records(columns=parameter_names, data=list(set(metrics_by_config[metric_name].keys())))
 
-            for parameter_name in parameter_names:
-                # plot lines for same-parameter metric values
-                fig, ax = plt.subplots()
-                fig.set_size_inches(*cm_to_body_parts(40, 40))
-                ax.margins(0.15)
-                ax.set_xlabel(parameter_name)
-                ax.set_ylabel(metric_name)
+                for parameter_name in parameter_names:
+                    # plot lines for same-parameter metric values
+                    fig, ax = plt.subplots()
+                    fig.set_size_inches(*cm_to_body_parts(40, 40))
+                    ax.margins(0.15)
+                    ax.set_xlabel(parameter_name)
+                    ax.set_ylabel(metric_name)
 
-                other_parameters = list(set(parameter_names) - {parameter_name})
-                grouped_parameter_values = configs_df.sort_values(by=other_parameters).groupby(other_parameters)
-                for p, configs_group in list(grouped_parameter_values):
-                    sorted_configs_group = configs_group.sort_values(by=parameter_name)
-                    other_parameter_values = next(sorted_configs_group[other_parameters].itertuples(index=False, name='config'))
-                    parameter_values = sorted_configs_group[parameter_name]
-                    # if len(parameter_values) < 3:
-                    #     continue
-                    metric_values = map(lambda c: aggregation_function(metrics_by_config[metric_name][tuple(list(c))]), sorted_configs_group.itertuples(index=False))
-                    ax.plot(parameter_values, metric_values, marker='o', ms=5, label=str(other_parameter_values))
+                    other_parameters = list(set(parameter_names) - {parameter_name})
+                    grouped_parameter_values = configs_df.sort_values(by=other_parameters).groupby(other_parameters)
+                    for p, configs_group in list(grouped_parameter_values):
+                        sorted_configs_group = configs_group.sort_values(by=parameter_name)
+                        other_parameter_values = next(sorted_configs_group[other_parameters].itertuples(index=False, name='config'))
+                        parameter_values = sorted_configs_group[parameter_name]
+                        metric_values = map(lambda c: aggregation_function[aggregation_function_name](metrics_by_config[metric_name][tuple(list(c))]), sorted_configs_group.itertuples(index=False))
+                        ax.plot(parameter_values, metric_values, marker='o', ms=5, label=str(other_parameter_values))
 
-                ax.legend()
-                fig.savefig(path.join(metrics_by_parameter_folder, "{}_by_{}_using_{}.svg".format(metric_name, parameter_name, aggregation_function_name)), bbox_inches='tight')
-                plt.close(fig)
+                    ax.legend()
+                    fig.savefig(path.join(metrics_by_parameter_folder, "{}_by_{}_using_{}.svg".format(metric_name, parameter_name, aggregation_function_name)), bbox_inches='tight')
+                    plt.close(fig)
 
-            print_info("plot metrics by parameter: {}%".format((i + 1)*100/len(metrics_by_config.keys())), replace_previous_line=True)
+                print_info("plot metrics by parameter using {a}: {p}%".format(a=aggregation_function_name, p=(i + 1)*100/len(metrics_by_config.keys())), replace_previous_line=True)
 
     # plot metrics in function of other metrics
     if args.plot_everything or args.plot_metrics_by_metric:
