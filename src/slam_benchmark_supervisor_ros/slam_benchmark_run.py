@@ -16,6 +16,7 @@ from performance_modelling_ros import Component
 from performance_modelling_ros.metrics.localization_metrics import compute_localization_metrics
 from performance_modelling_ros.metrics.navigation_metrics import compute_navigation_metrics
 from performance_modelling_ros.metrics.map_metrics import compute_map_metrics
+from performance_modelling_ros.metrics.computation_metrics import compute_computation_metrics
 from performance_modelling_ros.visualisation.trajectory_visualisation import save_trajectories_plot
 
 
@@ -129,8 +130,6 @@ class BenchmarkRun(object):
         explorer.launch()
         supervisor.launch()
 
-        # TODO check if all components launched properly
-
         # wait for the supervisor component to finish
         print_info("execute_run: waiting for supervisor to finish")
         self.log(event="waiting_supervisor_finish")
@@ -152,6 +151,7 @@ class BenchmarkRun(object):
         roscore.shutdown()
         print_info("execute_run: components shutdown completed")
 
+        # compute all relevant metrics and visualisations
         self.log(event="start_compute_map_metrics")
         compute_map_metrics(self.run_output_folder, self.stage_world_folder)
 
@@ -160,6 +160,9 @@ class BenchmarkRun(object):
 
         self.log(event="start_compute_navigation_metrics")
         compute_navigation_metrics(self.run_output_folder)
+
+        self.log(event="start_compute_computation_metrics")
+        compute_computation_metrics(self.run_output_folder)
 
         print_info("execute_run: metrics computation completed")
 

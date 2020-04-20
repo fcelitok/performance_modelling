@@ -32,6 +32,11 @@ def get_simple_value(result_path):
         return result_file.read()
 
 
+def get_csv(result_path):
+    df = pd.read_csv(result_path, sep=', ', engine='python')
+    return df
+
+
 def get_metric_evaluator_mean(result_path):
     df = pd.read_csv(result_path, sep=', ', engine='python')
     return df['Mean'][0]
@@ -138,6 +143,7 @@ if __name__ == '__main__':
         for i, run_folder in enumerate(run_folders):
             run_record = dict()
             metric_results_folder = path.join(run_folder, "metric_results")
+            benchmark_data_folder = path.join(run_folder, "benchmark_data")
             run_info_file_path = path.join(run_folder, "run_info.yaml")
 
             if not path.exists(metric_results_folder):
@@ -198,12 +204,50 @@ if __name__ == '__main__':
                 run_record['normalised_explored_area'] = normalised_explored_area
                 metric_names.add('normalised_explored_area')
 
-                metrics_by_config['explored_area'][config].append(get_yaml(explored_area_path)['result_map']['area']['free'])
+                explored_area = get_yaml(explored_area_path)['result_map']['area']['free']
+                metrics_by_config['explored_area'][config].append(explored_area)
             else:
                 metrics_by_config['failure'][config].append(1)
                 run_record['failure'] = 1
                 metrics_by_run.append(run_record)
                 continue
+
+            run_events_path = path.join(benchmark_data_folder, "run_events.csv")
+            if path.exists(run_events_path):
+                run_events = get_csv(run_events_path)
+                run_start_time = float(run_events[run_events["event"] == "run_start"]["timestamp"])
+                supervisor_finish_time = float(run_events[run_events["event"] == "supervisor_finished"]["timestamp"])
+                run_execution_time = supervisor_finish_time - run_start_time
+                metrics_by_config['run_execution_time'][config].append(run_execution_time)
+                run_record['run_execution_time'] = run_execution_time
+                metric_names.add('run_execution_time')
+            else:
+                print_error("no run_events.csv")
+                continue
+
+            computation_metrics_path = path.join(metric_results_folder, "computation_metrics.yaml")
+            if path.exists(computation_metrics_path):
+                computation_metrics = get_yaml(computation_metrics_path)
+
+                gmapping_cpu_time = computation_metrics['slam_gmapping_accumulated_cpu_time_max']
+                metrics_by_config['slam_cpu_time'][config].append(gmapping_cpu_time)
+                run_record['slam_cpu_time'] = gmapping_cpu_time
+                metric_names.add('slam_cpu_time')
+
+                normalised_gmapping_cpu_time = computation_metrics['slam_gmapping_accumulated_cpu_time_max']/run_execution_time
+                metrics_by_config['normalised_slam_cpu_time'][config].append(normalised_gmapping_cpu_time)
+                run_record['normalised_slam_cpu_time'] = normalised_gmapping_cpu_time
+                metric_names.add('normalised_slam_cpu_time')
+
+                gmapping_uss = computation_metrics['slam_gmapping_uss_max']
+                metrics_by_config['slam_memory'][config].append(gmapping_uss)
+                run_record['slam_memory'] = gmapping_uss
+                metric_names.add('slam_memory')
+
+                normalised_gmapping_uss = computation_metrics['slam_gmapping_uss_max']/explored_area
+                metrics_by_config['normalised_slam_memory'][config].append(normalised_gmapping_uss)
+                run_record['normalised_slam_memory'] = normalised_gmapping_uss
+                metric_names.add('normalised_slam_memory')
 
             absolute_error_path = path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error")
             if path.exists(absolute_error_path):
