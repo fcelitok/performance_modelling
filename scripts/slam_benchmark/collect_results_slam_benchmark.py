@@ -399,6 +399,7 @@ if __name__ == '__main__':
                         metric_values = map(lambda c: aggregation_function[aggregation_function_name](metrics_by_config[metric_name][tuple(list(c))]), sorted_configs_group.itertuples(index=False))
                         ax.plot(parameter_values, metric_values, marker='o', ms=5, label=str(other_parameter_values))
 
+                    ax.grid(color='black', alpha=0.5, linestyle='solid')
                     ax.legend()
                     fig.savefig(path.join(metrics_by_parameter_folder, "{}_by_{}_using_{}.svg".format(metric_name, parameter_name, aggregation_function_name)), bbox_inches='tight')
                     plt.close(fig)
@@ -435,6 +436,8 @@ if __name__ == '__main__':
                 # plot scatter graph for same-config metric x, y values (each config has a different color)
                 for config, metric_values in metrics_x_y_by_config.items():
                     ax.scatter(metric_values['x'], metric_values['y'])
+
+                ax.grid(color='black', alpha=0.5, linestyle='solid')
 
                 fig_name = "{x}_to_{y}.svg".format(y=metric_y_name, x=metric_x_name)
                 fig.savefig(path.join(metrics_by_metric_folder, fig_name), bbox_inches='tight')
