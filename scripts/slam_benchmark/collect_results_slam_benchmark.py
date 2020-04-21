@@ -37,11 +37,6 @@ def get_csv(result_path):
     return df
 
 
-def get_metric_evaluator_mean(result_path):
-    df = pd.read_csv(result_path, sep=', ', engine='python')
-    return df['Mean'][0]
-
-
 def get_yaml(yaml_file_path):
     with open(yaml_file_path) as yaml_file:
         return yaml.load(yaml_file)
@@ -148,7 +143,6 @@ if __name__ == '__main__':
 
             if not path.exists(metric_results_folder):
                 print_error("metric_results_folder does not exists [{}]".format(metric_results_folder))
-
                 continue
             if not path.exists(run_info_file_path):
                 print_error("run_info file does not exists [{}]".format(run_info_file_path))
@@ -175,149 +169,53 @@ if __name__ == '__main__':
             metric_names.add('failure')
             # TODO log each failure mode
 
-            trajectory_length_path = path.join(metric_results_folder, "trajectory_length")
-            if path.exists(trajectory_length_path):
-                trajectory_length = float(get_simple_value(trajectory_length_path))
-                if trajectory_length < 3.0:
-                    metrics_by_config['failure'][config].append(1)
-                    run_record['failure'] = 1
-                    metrics_by_run.append(run_record)
-                    continue
-                metrics_by_config['trajectory_length'][config].append(trajectory_length)
-                run_record['trajectory_length'] = trajectory_length
-                metric_names.add('trajectory_length')
-            else:
+            try:
+                run_events = get_csv(path.join(benchmark_data_folder, "run_events.csv"))
+                map_metrics = get_yaml(path.join(metric_results_folder, "map_metrics.yaml"))
+                localisation_metrics = get_yaml(path.join(metric_results_folder, "localisation_metrics.yaml"))
+                navigation_metrics = get_yaml(path.join(metric_results_folder, "navigation_metrics.yaml"))
+                computation_metrics = get_yaml(path.join(metric_results_folder, "computation_metrics.yaml"))
+            except IOError as e:
                 metrics_by_config['failure'][config].append(1)
                 run_record['failure'] = 1
                 metrics_by_run.append(run_record)
                 continue
 
-            explored_area_path = path.join(metric_results_folder, "normalised_explored_area.yaml")
-            if path.exists(explored_area_path):
-                normalised_explored_area = get_yaml(explored_area_path)['normalised_explored_area']
-                if normalised_explored_area < 0.1:
-                    metrics_by_config['failure'][config].append(1)
-                    run_record['failure'] = 1
-                    metrics_by_run.append(run_record)
-                    continue
-                metrics_by_config['normalised_explored_area'][config].append(normalised_explored_area)
-                run_record['normalised_explored_area'] = normalised_explored_area
-                metric_names.add('normalised_explored_area')
-
-                explored_area = get_yaml(explored_area_path)['result_map']['area']['free']
-                metrics_by_config['explored_area'][config].append(explored_area)
-            else:
+            trajectory_length = localisation_metrics['trajectory_length']
+            if trajectory_length < 3.0 or trajectory_length is None:
                 metrics_by_config['failure'][config].append(1)
                 run_record['failure'] = 1
                 metrics_by_run.append(run_record)
                 continue
 
-            run_events_path = path.join(benchmark_data_folder, "run_events.csv")
-            if path.exists(run_events_path):
-                run_events = get_csv(run_events_path)
-                run_start_time = float(run_events[run_events["event"] == "run_start"]["timestamp"])
-                supervisor_finish_time = float(run_events[run_events["event"] == "supervisor_finished"]["timestamp"])
-                run_execution_time = supervisor_finish_time - run_start_time
-                metrics_by_config['run_execution_time'][config].append(run_execution_time)
-                run_record['run_execution_time'] = run_execution_time
-                metric_names.add('run_execution_time')
-            else:
-                print_error("no run_events.csv")
+            normalised_explored_area = map_metrics['explored_area']['normalised_explored_area']
+            if normalised_explored_area < 0.1 or normalised_explored_area is None:
+                metrics_by_config['failure'][config].append(1)
+                run_record['failure'] = 1
+                metrics_by_run.append(run_record)
                 continue
 
-            computation_metrics_path = path.join(metric_results_folder, "computation_metrics.yaml")
-            if path.exists(computation_metrics_path):
-                computation_metrics = get_yaml(computation_metrics_path)
+            metrics_by_config['normalised_explored_area'][config].append(normalised_explored_area)
 
-                gmapping_cpu_time = computation_metrics['slam_gmapping_accumulated_cpu_time_max']
-                metrics_by_config['slam_cpu_time'][config].append(gmapping_cpu_time)
-                run_record['slam_cpu_time'] = gmapping_cpu_time
-                metric_names.add('slam_cpu_time')
+            metrics_by_config['mean_absolute_correction_error'][config].append(localisation_metrics['absolute_localization_error']['mean'])
 
-                normalised_gmapping_cpu_time = computation_metrics['slam_gmapping_accumulated_cpu_time_max']/run_execution_time
-                metrics_by_config['normalised_slam_cpu_time'][config].append(normalised_gmapping_cpu_time)
-                run_record['normalised_slam_cpu_time'] = normalised_gmapping_cpu_time
-                metric_names.add('normalised_slam_cpu_time')
+            run_start_time = float(run_events[run_events["event"] == "run_start"]["timestamp"])
+            supervisor_finish_time = float(run_events[run_events["event"] == "supervisor_finished"]["timestamp"])
+            run_execution_time = supervisor_finish_time - run_start_time
+            metrics_by_config['run_execution_time'][config].append(run_execution_time)
+            run_record['run_execution_time'] = run_execution_time
+            metric_names.add('run_execution_time')
 
-                gmapping_uss = computation_metrics['slam_gmapping_uss_max']
-                metrics_by_config['slam_memory'][config].append(gmapping_uss)
-                run_record['slam_memory'] = gmapping_uss
-                metric_names.add('slam_memory')
+            normalised_gmapping_cpu_time = computation_metrics['cpu_and_memory_usage']['slam_gmapping_accumulated_cpu_time'] / run_execution_time
+            metrics_by_config['normalised_slam_cpu_time'][config].append(normalised_gmapping_cpu_time)
+            run_record['normalised_slam_cpu_time'] = normalised_gmapping_cpu_time
+            metric_names.add('normalised_slam_cpu_time')
 
-                normalised_gmapping_uss = computation_metrics['slam_gmapping_uss_max']/explored_area
-                metrics_by_config['normalised_slam_memory'][config].append(normalised_gmapping_uss)
-                run_record['normalised_slam_memory'] = normalised_gmapping_uss
-                metric_names.add('normalised_slam_memory')
-
-            absolute_error_path = path.join(metric_results_folder, "absolute_localisation_error", "absolute_localization_error")
-            if path.exists(absolute_error_path):
-                metrics_by_config['normalised_absolute_error'][config].append(float(get_simple_value(absolute_error_path)) / trajectory_length)
-
-            absolute_correction_error = path.join(metric_results_folder, "absolute_localisation_correction_error", "absolute_localization_error")
-            if path.exists(absolute_correction_error):
-                metrics_by_config['normalised_absolute_correction_error'][config].append(float(get_simple_value(absolute_correction_error)) / trajectory_length)
-                run_record['normalised_absolute_correction_error'] = float(get_simple_value(absolute_correction_error)) / trajectory_length
-                metric_names.add('normalised_absolute_correction_error')
-
-            cmd_vel_metrics_path = path.join(metric_results_folder, "cmd_vel_metrics.yaml")
-            if path.exists(cmd_vel_metrics_path):
-                metrics_by_config['normalised_linear_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_linear_cmd'] / trajectory_length)
-                metrics_by_config['normalised_angular_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_angular_cmd'] / trajectory_length)
-                metrics_by_config['normalised_combined_command'][config].append(get_yaml(cmd_vel_metrics_path)['sum_combined_cmd'] / trajectory_length)
-                run_record['normalised_linear_command'] = get_yaml(cmd_vel_metrics_path)['sum_linear_cmd'] / trajectory_length
-                metric_names.add('normalised_linear_command')
-                run_record['normalised_angular_command'] = get_yaml(cmd_vel_metrics_path)['sum_angular_cmd'] / trajectory_length
-                metric_names.add('normalised_angular_command')
-                run_record['normalised_combined_command'] = get_yaml(cmd_vel_metrics_path)['sum_combined_cmd'] / trajectory_length
-                metric_names.add('normalised_combined_command')
-
-            ordered_r_path = path.join(metric_results_folder, "base_link_poses", "ordered_r.csv")
-            if path.exists(ordered_r_path):
-                metrics_by_config['normalised_ordered_r'][config].append(get_metric_evaluator_mean(ordered_r_path) / trajectory_length)
-                metrics_by_config['ordered_r'][config].append(get_metric_evaluator_mean(ordered_r_path))
-
-            ordered_t_path = path.join(metric_results_folder, "base_link_poses", "ordered_t.csv")
-            if path.exists(ordered_t_path):
-                metrics_by_config['normalised_ordered_t'][config].append(get_metric_evaluator_mean(ordered_t_path) / trajectory_length)
-                metrics_by_config['ordered_t'][config].append(get_metric_evaluator_mean(ordered_t_path))
-
-            re_r_path = path.join(metric_results_folder, "base_link_poses", "re_r.csv")
-            if path.exists(re_r_path):
-                metrics_by_config['normalised_re_r'][config].append(get_metric_evaluator_mean(re_r_path) / trajectory_length)
-                metrics_by_config['re_r'][config].append(get_metric_evaluator_mean(re_r_path))
-
-            re_t_path = path.join(metric_results_folder, "base_link_poses", "re_t.csv")
-            if path.exists(re_t_path):
-                metrics_by_config['normalised_re_t'][config].append(get_metric_evaluator_mean(re_t_path) / trajectory_length)
-                metrics_by_config['re_t'][config].append(get_metric_evaluator_mean(re_t_path))
-                run_record['re_t'] = get_metric_evaluator_mean(re_t_path)
-                metric_names.add('re_t')
-
-            correction_ordered_r_path = path.join(metric_results_folder, "base_link_correction_poses", "ordered_r.csv")
-            if path.exists(correction_ordered_r_path):
-                metrics_by_config['normalised_correction_ordered_r'][config].append(get_metric_evaluator_mean(correction_ordered_r_path) / trajectory_length)
-                metrics_by_config['correction_ordered_r'][config].append(get_metric_evaluator_mean(correction_ordered_r_path))
-
-            correction_ordered_t_path = path.join(metric_results_folder, "base_link_correction_poses", "ordered_t.csv")
-            if path.exists(correction_ordered_t_path):
-                metrics_by_config['normalised_correction_ordered_t'][config].append(get_metric_evaluator_mean(correction_ordered_t_path) / trajectory_length)
-                metrics_by_config['correction_ordered_t'][config].append(get_metric_evaluator_mean(correction_ordered_t_path))
-
-            correction_re_r_path = path.join(metric_results_folder, "base_link_correction_poses", "re_r.csv")
-            if path.exists(correction_re_r_path):
-                metrics_by_config['normalised_correction_re_r'][config].append(get_metric_evaluator_mean(correction_re_r_path) / trajectory_length)
-                run_record['normalised_correction_re_r'] = get_metric_evaluator_mean(correction_re_r_path) / trajectory_length
-                metric_names.add('normalised_correction_re_r')
-                metrics_by_config['correction_re_r'][config].append(get_metric_evaluator_mean(correction_re_r_path))
-
-            correction_re_t_path = path.join(metric_results_folder, "base_link_correction_poses", "re_t.csv")
-            if path.exists(correction_re_t_path):
-                metrics_by_config['normalised_correction_re_t'][config].append(get_metric_evaluator_mean(correction_re_t_path) / trajectory_length)
-                run_record['normalised_correction_re_t'] = get_metric_evaluator_mean(correction_re_t_path) / trajectory_length
-                metric_names.add('normalised_correction_re_t')
-                metrics_by_config['correction_re_t'][config].append(get_metric_evaluator_mean(correction_re_t_path))
-                run_record['correction_re_t'] = get_metric_evaluator_mean(correction_re_t_path)
-                metric_names.add('correction_re_t')
+            explored_area = map_metrics['explored_area']['result_map']['area']['free']
+            normalised_gmapping_uss = computation_metrics['cpu_and_memory_usage']['slam_gmapping_uss'] / explored_area
+            metrics_by_config['normalised_slam_memory'][config].append(normalised_gmapping_uss)
+            run_record['normalised_slam_memory'] = normalised_gmapping_uss
+            metric_names.add('normalised_slam_memory')
 
             metrics_by_config['failure'][config].append(0)
             metrics_by_run.append(run_record)
