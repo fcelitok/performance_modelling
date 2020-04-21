@@ -33,8 +33,8 @@ def get_simple_value(result_path):
 
 
 def get_csv(result_path):
-    df = pd.read_csv(result_path, sep=', ', engine='python')
-    return df
+    df_csv = pd.read_csv(result_path, sep=', ', engine='python')
+    return df_csv
 
 
 def get_yaml(yaml_file_path):
@@ -125,18 +125,17 @@ if __name__ == '__main__':
         print_info("reading run data from cache")
         with open(cache_file_path) as f:
             cache = pickle.load(f)
-        metrics_by_config = cache['metrics_by_config']
+        # metrics_by_config = cache['metrics_by_config']
         metrics_by_run = cache['metrics_by_run']
-        metric_names = cache['metric_names']
+        df = cache['df']
     else:
-        metrics_by_config = defaultdict(lambda: defaultdict(list))
+        # metrics_by_config = defaultdict(lambda: defaultdict(list))
         metrics_by_run = list()
-        metric_names = set()
+        df = pd.DataFrame()
 
         # collect results from each run
         print_info("reading run data")
         for i, run_folder in enumerate(run_folders):
-            run_record = dict()
             metric_results_folder = path.join(run_folder, "metric_results")
             benchmark_data_folder = path.join(run_folder, "benchmark_data")
             run_info_file_path = path.join(run_folder, "run_info.yaml")
@@ -162,11 +161,13 @@ if __name__ == '__main__':
             delta = gmapping_configuration['delta']
             maxUrange = gmapping_configuration['maxUrange']
             environment_name = path.basename(run_info['environment_folder'])
-            config = (particles, delta, maxUrange, environment_name)
+            config_tuple = (particles, delta, maxUrange, environment_name)
 
-            run_record['config'] = config
+            run_record = dict()
+            metrics_by_run.append(run_record)
+
+            run_record['config'] = config_tuple
             run_record['failure'] = 0
-            metric_names.add('failure')
             # TODO log each failure mode
 
             try:
@@ -176,95 +177,79 @@ if __name__ == '__main__':
                 navigation_metrics = get_yaml(path.join(metric_results_folder, "navigation_metrics.yaml"))
                 computation_metrics = get_yaml(path.join(metric_results_folder, "computation_metrics.yaml"))
             except IOError as e:
-                metrics_by_config['failure'][config].append(1)
+                # metrics_by_config['failure'][config_tuple].append(1)
                 run_record['failure'] = 1
-                metrics_by_run.append(run_record)
+                df = df.append(run_record, ignore_index=True)
                 continue
 
             trajectory_length = localisation_metrics['trajectory_length']
             if trajectory_length < 3.0 or trajectory_length is None:
-                metrics_by_config['failure'][config].append(1)
+                # metrics_by_config['failure'][config_tuple].append(1)
                 run_record['failure'] = 1
-                metrics_by_run.append(run_record)
+                df = df.append(run_record, ignore_index=True)
                 continue
 
             normalised_explored_area = map_metrics['explored_area']['normalised_explored_area']
             if normalised_explored_area < 0.1 or normalised_explored_area is None:
-                metrics_by_config['failure'][config].append(1)
+                # metrics_by_config['failure'][config_tuple].append(1)
                 run_record['failure'] = 1
-                metrics_by_run.append(run_record)
+                df = df.append(run_record, ignore_index=True)
                 continue
 
-            metrics_by_config['normalised_explored_area'][config].append(normalised_explored_area)
+            # metrics_by_config['normalised_explored_area'][config_tuple].append(normalised_explored_area)
+            run_record['normalised_explored_area'] = normalised_explored_area
 
-            metrics_by_config['mean_absolute_correction_error'][config].append(localisation_metrics['absolute_localization_error']['mean'])
+            # metrics_by_config['mean_absolute_correction_error'][config_tuple].append(localisation_metrics['absolute_localization_error']['mean'])
+            run_record['mean_absolute_correction_error'] = localisation_metrics['absolute_localization_error']['mean']
 
             run_start_time = float(run_events[run_events["event"] == "run_start"]["timestamp"])
             supervisor_finish_time = float(run_events[run_events["event"] == "supervisor_finished"]["timestamp"])
             run_execution_time = supervisor_finish_time - run_start_time
-            metrics_by_config['run_execution_time'][config].append(run_execution_time)
+            # metrics_by_config['run_execution_time'][config_tuple].append(run_execution_time)
             run_record['run_execution_time'] = run_execution_time
-            metric_names.add('run_execution_time')
 
             normalised_gmapping_cpu_time = computation_metrics['cpu_and_memory_usage']['slam_gmapping_accumulated_cpu_time'] / run_execution_time
-            metrics_by_config['normalised_slam_cpu_time'][config].append(normalised_gmapping_cpu_time)
+            # metrics_by_config['normalised_slam_cpu_time'][config_tuple].append(normalised_gmapping_cpu_time)
             run_record['normalised_slam_cpu_time'] = normalised_gmapping_cpu_time
-            metric_names.add('normalised_slam_cpu_time')
 
             explored_area = map_metrics['explored_area']['result_map']['area']['free']
             normalised_gmapping_uss = computation_metrics['cpu_and_memory_usage']['slam_gmapping_uss'] / explored_area
-            metrics_by_config['normalised_slam_memory'][config].append(normalised_gmapping_uss)
+            # metrics_by_config['normalised_slam_memory'][config_tuple].append(normalised_gmapping_uss)
             run_record['normalised_slam_memory'] = normalised_gmapping_uss
-            metric_names.add('normalised_slam_memory')
 
-            metrics_by_config['failure'][config].append(0)
-            metrics_by_run.append(run_record)
+            # metrics_by_config['failure'][config_tuple].append(0)
+            df = df.append(run_record, ignore_index=True)
             del run_record
 
             print_info("reading run data: {}%".format((i + 1)*100/len(run_folders)), replace_previous_line=True)
 
         # save cache
         if cache_file_path is not None:
-            metrics_by_config = dict(metrics_by_config)
-            cache = {'metrics_by_config': metrics_by_config, 'metrics_by_run': metrics_by_run, 'metric_names': metric_names}
+            # metrics_by_config = dict(metrics_by_config)
+            cache = {'df': df, 'metrics_by_run': metrics_by_run}
             with open(cache_file_path, 'w') as f:
                 pickle.dump(cache, f)
+
+    metric_names = set(df.drop('config', axis=1).columns)
+
+    metrics_by_config = dict()
+    for metric_name in metric_names:
+        metrics_by_config[metric_name] = dict()
+        for config, df_grouped_by_config in df.groupby(by='config'):
+            metrics_by_config[metric_name][tuple(list(config))] = df_grouped_by_config[metric_name].tolist()
 
     parameter_names = ('particles', 'delta', 'maxUrange', 'environment')
     configs_sets = defaultdict(set)
     metrics_x_y_by_config = set()
     for metric_name in metrics_by_config.keys():
-        for config in metrics_by_config[metric_name].keys():
-            metrics_x_y_by_config.add(config)
+        for config_tuple in metrics_by_config[metric_name].keys():
+            metrics_x_y_by_config.add(config_tuple)
 
-            particles, delta, maxUrange, environment = config
+            particles, delta, maxUrange, environment = config_tuple
             configs_sets['particles'].add(particles)
             configs_sets['delta'].add(delta)
             configs_sets['maxUrange'].add(maxUrange)
             configs_sets['environment'].add(environment)
-
-    # plot metrics grouped by configuration
-    if args.plot_everything or args.plot_metrics_by_config:
-        print_info("plot metrics grouped by configuration")
-        metrics_by_config_folder = path.join(output_folder, "metrics_by_config")
-        if not path.exists(metrics_by_config_folder):
-            os.makedirs(metrics_by_config_folder)
-
-        for metric_name in metrics_by_config.keys():
-            fig, ax = plt.subplots()
-            fig.set_size_inches(*cm_to_body_parts(30, 30))
-            ax.margins(0.15)
-            x_ticks = list()
-            for i, (config, metric_values) in enumerate(metrics_by_config[metric_name].items()):
-                ax.plot([i] * len(metric_values), metric_values, marker='_', linestyle='', ms=20, color='black')
-                x_ticks.append(str(config))
-
-            ax.set_title(metric_name)
-            ax.set_xticks(range(len(x_ticks)))
-            ax.set_xticklabels(x_ticks, fontdict={'rotation': 'vertical'})
-
-            fig.savefig(path.join(metrics_by_config_folder, "{}.svg".format(metric_name)), bbox_inches='tight')
-            plt.close(fig)
 
     # plot metrics in function of single configuration parameters
     if args.plot_everything or args.plot_metrics_by_parameter:
@@ -276,9 +261,9 @@ if __name__ == '__main__':
             if not path.exists(metrics_by_parameter_folder):
                 os.makedirs(metrics_by_parameter_folder)
 
-            for i, metric_name in enumerate(metrics_by_config.keys()):
+            for i, metric_name in enumerate(metric_names):
 
-                configs_df = pd.DataFrame.from_records(columns=parameter_names, data=list(set(metrics_by_config[metric_name].keys())))
+                configs_df = pd.DataFrame.from_records(columns=parameter_names, data=df[pd.notnull(df[metric_name])]['config'].unique().tolist())
 
                 for parameter_name in parameter_names:
                     # plot lines for same-parameter metric values
@@ -290,11 +275,18 @@ if __name__ == '__main__':
 
                     other_parameters = list(set(parameter_names) - {parameter_name})
                     grouped_parameter_values = configs_df.sort_values(by=other_parameters).groupby(other_parameters)
-                    for p, configs_group in list(grouped_parameter_values):
-                        sorted_configs_group = configs_group.sort_values(by=parameter_name)
-                        other_parameter_values = next(sorted_configs_group[other_parameters].itertuples(index=False, name='config'))
-                        parameter_values = sorted_configs_group[parameter_name]
-                        metric_values = map(lambda c: aggregation_function[aggregation_function_name](metrics_by_config[metric_name][tuple(list(c))]), sorted_configs_group.itertuples(index=False))
+                    for p, other_parameters_fixed in list(grouped_parameter_values):
+
+                        other_parameters_fixed_sorted = other_parameters_fixed.sort_values(by=parameter_name)
+                        other_parameter_values = next(other_parameters_fixed_sorted[other_parameters].itertuples(index=False, name='config'))
+                        parameter_values = other_parameters_fixed_sorted[parameter_name]
+
+                        metric_values = list()
+                        for config_row in other_parameters_fixed_sorted.itertuples(index=False):
+                            config_tuple = tuple(list(config_row))
+                            metric_value = aggregation_function[aggregation_function_name](df[df['config'] == config_tuple][metric_name])
+                            metric_values.append(metric_value)
+
                         ax.plot(parameter_values, metric_values, marker='o', ms=5, label=str(other_parameter_values))
 
                     ax.grid(color='black', alpha=0.5, linestyle='solid')
@@ -302,7 +294,7 @@ if __name__ == '__main__':
                     fig.savefig(path.join(metrics_by_parameter_folder, "{}_by_{}_using_{}.svg".format(metric_name, parameter_name, aggregation_function_name)), bbox_inches='tight')
                     plt.close(fig)
 
-                print_info("plot metrics by parameter using {a}: {p}%".format(a=aggregation_function_name, p=(i + 1)*100/len(metrics_by_config.keys())), replace_previous_line=True)
+                print_info("plot metrics by parameter using {a}: {p}%".format(a=aggregation_function_name, p=(i + 1)*100/len(metric_names)), replace_previous_line=True)
 
     # plot metrics in function of other metrics
     if args.plot_everything or args.plot_metrics_by_metric:
@@ -332,7 +324,7 @@ if __name__ == '__main__':
                         metrics_x_y_by_config[run_record['config']]['y'].append(run_record[metric_y_name])
 
                 # plot scatter graph for same-config metric x, y values (each config has a different color)
-                for config, metric_values in metrics_x_y_by_config.items():
+                for config_tuple, metric_values in metrics_x_y_by_config.items():
                     ax.scatter(metric_values['x'], metric_values['y'])
 
                 ax.grid(color='black', alpha=0.5, linestyle='solid')
