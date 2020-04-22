@@ -159,7 +159,6 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
     # Select the biggest of the two
     n_samples = max(n_samples_t, n_samples_r)
     if n_samples < 10:
-        print_error("compute_relative_localization_error: n_samples [{}] < 10".format(n_samples))
         return
 
     with open(relations_re_file_path, "w") as relations_file_re:
@@ -191,11 +190,11 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
 
     metric_evaluator_re_t_results_df = pd.read_csv(metric_evaluator_re_t_results_csv_path, sep=', ', engine='python')
     relative_errors_dict['random_relations']['translation'] = dict()
-    relative_errors_dict['random_relations']['translation']['mean'] = metric_evaluator_re_t_results_df['Mean'][0]
-    relative_errors_dict['random_relations']['translation']['std'] = metric_evaluator_re_t_results_df['Std'][0]
-    relative_errors_dict['random_relations']['translation']['min'] = metric_evaluator_re_t_results_df['Min'][0]
-    relative_errors_dict['random_relations']['translation']['max'] = metric_evaluator_re_t_results_df['Max'][0]
-    relative_errors_dict['random_relations']['translation']['n'] = metric_evaluator_re_t_results_df['NumMeasures'][0]
+    relative_errors_dict['random_relations']['translation']['mean'] = float(metric_evaluator_re_t_results_df['Mean'][0])
+    relative_errors_dict['random_relations']['translation']['std'] = float(metric_evaluator_re_t_results_df['Std'][0])
+    relative_errors_dict['random_relations']['translation']['min'] = float(metric_evaluator_re_t_results_df['Min'][0])
+    relative_errors_dict['random_relations']['translation']['max'] = float(metric_evaluator_re_t_results_df['Max'][0])
+    relative_errors_dict['random_relations']['translation']['n'] = float(metric_evaluator_re_t_results_df['NumMeasures'][0])
 
     metric_evaluator_re_r_results_csv_path = path.join(log_output_folder, "re_r.csv")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
@@ -208,11 +207,11 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
 
     metric_evaluator_re_r_results_df = pd.read_csv(metric_evaluator_re_r_results_csv_path, sep=', ', engine='python')
     relative_errors_dict['random_relations']['rotation'] = dict()
-    relative_errors_dict['random_relations']['rotation']['mean'] = metric_evaluator_re_r_results_df['Mean'][0]
-    relative_errors_dict['random_relations']['rotation']['std'] = metric_evaluator_re_r_results_df['Std'][0]
-    relative_errors_dict['random_relations']['rotation']['min'] = metric_evaluator_re_r_results_df['Min'][0]
-    relative_errors_dict['random_relations']['rotation']['max'] = metric_evaluator_re_r_results_df['Max'][0]
-    relative_errors_dict['random_relations']['rotation']['n'] = metric_evaluator_re_r_results_df['NumMeasures'][0]
+    relative_errors_dict['random_relations']['rotation']['mean'] = float(metric_evaluator_re_r_results_df['Mean'][0])
+    relative_errors_dict['random_relations']['rotation']['std'] = float(metric_evaluator_re_r_results_df['Std'][0])
+    relative_errors_dict['random_relations']['rotation']['min'] = float(metric_evaluator_re_r_results_df['Min'][0])
+    relative_errors_dict['random_relations']['rotation']['max'] = float(metric_evaluator_re_r_results_df['Max'][0])
+    relative_errors_dict['random_relations']['rotation']['n'] = float(metric_evaluator_re_r_results_df['NumMeasures'][0])
 
     # ordered relations
     ordered_relations_file_path = path.join(log_output_folder, "ordered_relations")
@@ -220,7 +219,6 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
 
         idx_delta = len(ground_truth_acceptable_times)/n_samples
         if idx_delta == 0:
-            print_error("compute_relative_localization_error: len(ground_truth_acceptable_times) [{l}] < n_samples [{n}]".format(l=len(ground_truth_acceptable_times), n=n_samples))
             idx_delta = 1
 
         for idx, first_stamp in enumerate(ground_truth_acceptable_times[0::idx_delta][0:-1]):
@@ -249,11 +247,11 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
 
     metric_evaluator_ordered_t_results_df = pd.read_csv(metric_evaluator_ordered_t_results_csv_path, sep=', ', engine='python')
     relative_errors_dict['sequential_relations']['translation'] = dict()
-    relative_errors_dict['sequential_relations']['translation']['mean'] = metric_evaluator_ordered_t_results_df['Mean'][0]
-    relative_errors_dict['sequential_relations']['translation']['std'] = metric_evaluator_ordered_t_results_df['Std'][0]
-    relative_errors_dict['sequential_relations']['translation']['min'] = metric_evaluator_ordered_t_results_df['Min'][0]
-    relative_errors_dict['sequential_relations']['translation']['max'] = metric_evaluator_ordered_t_results_df['Max'][0]
-    relative_errors_dict['sequential_relations']['translation']['n'] = metric_evaluator_ordered_t_results_df['NumMeasures'][0]
+    relative_errors_dict['sequential_relations']['translation']['mean'] = float(metric_evaluator_ordered_t_results_df['Mean'][0])
+    relative_errors_dict['sequential_relations']['translation']['std'] = float(metric_evaluator_ordered_t_results_df['Std'][0])
+    relative_errors_dict['sequential_relations']['translation']['min'] = float(metric_evaluator_ordered_t_results_df['Min'][0])
+    relative_errors_dict['sequential_relations']['translation']['max'] = float(metric_evaluator_ordered_t_results_df['Max'][0])
+    relative_errors_dict['sequential_relations']['translation']['n'] = float(metric_evaluator_ordered_t_results_df['NumMeasures'][0])
 
     metric_evaluator_ordered_r_results_csv_path = path.join(log_output_folder, "ordered_r.csv")
     metric_evaluator(exec_path=metric_evaluator_exec_path,
@@ -266,11 +264,11 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
 
     metric_evaluator_ordered_r_results_df = pd.read_csv(metric_evaluator_ordered_r_results_csv_path, sep=', ', engine='python')
     relative_errors_dict['sequential_relations']['rotation'] = dict()
-    relative_errors_dict['sequential_relations']['rotation']['mean'] = metric_evaluator_ordered_r_results_df['Mean'][0]
-    relative_errors_dict['sequential_relations']['rotation']['std'] = metric_evaluator_ordered_r_results_df['Std'][0]
-    relative_errors_dict['sequential_relations']['rotation']['min'] = metric_evaluator_ordered_r_results_df['Min'][0]
-    relative_errors_dict['sequential_relations']['rotation']['max'] = metric_evaluator_ordered_r_results_df['Max'][0]
-    relative_errors_dict['sequential_relations']['rotation']['n'] = metric_evaluator_ordered_r_results_df['NumMeasures'][0]
+    relative_errors_dict['sequential_relations']['rotation']['mean'] = float(metric_evaluator_ordered_r_results_df['Mean'][0])
+    relative_errors_dict['sequential_relations']['rotation']['std'] = float(metric_evaluator_ordered_r_results_df['Std'][0])
+    relative_errors_dict['sequential_relations']['rotation']['min'] = float(metric_evaluator_ordered_r_results_df['Min'][0])
+    relative_errors_dict['sequential_relations']['rotation']['max'] = float(metric_evaluator_ordered_r_results_df['Max'][0])
+    relative_errors_dict['sequential_relations']['rotation']['n'] = float(metric_evaluator_ordered_r_results_df['NumMeasures'][0])
     
     return relative_errors_dict
 
@@ -347,8 +345,8 @@ def absolute_localization_error_metrics(estimated_poses_file_path, ground_truth_
         return np.sqrt(np.sum((np.array((a_x, a_y)) - np.array((b_x, b_y)))**2))
 
     absolute_errors_list = map(euclidean_distance, matching_poses_dict.values())
-    absolute_error_dict['sum'] = sum(absolute_errors_list)
-    absolute_error_dict['mean'] = sum(absolute_errors_list)/len(absolute_errors_list)
+    absolute_error_dict['sum'] = float(sum(absolute_errors_list))
+    absolute_error_dict['mean'] = float(sum(absolute_errors_list)/len(absolute_errors_list))
 
     return absolute_error_dict
 
@@ -378,7 +376,7 @@ def trajectory_length_metric(ground_truth_file_path):
     for i in range(len(ground_truth_points)-1):
         trajectory_length += euclidean_distance(ground_truth_points[i], ground_truth_points[i+1])
 
-    return trajectory_length
+    return float(trajectory_length)
 
 
 def compute_localization_metrics(run_output_folder):
