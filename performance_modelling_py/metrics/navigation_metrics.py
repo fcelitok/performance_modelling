@@ -9,7 +9,7 @@ import yaml
 from os import path
 import numpy as np
 
-from performance_modelling_ros.utils import print_info
+from performance_modelling_py.utils import print_info
 
 
 def cmd_vel_metrics(cmd_vel_twists_file_path):

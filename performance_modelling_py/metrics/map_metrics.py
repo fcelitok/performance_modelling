@@ -10,7 +10,7 @@ import yaml
 from PIL import Image
 from os import path
 
-from performance_modelling_ros.utils import print_info, print_error
+from performance_modelling_py.utils import print_info, print_error
 
 
 def explored_area_metrics(map_file_path, map_info_file_path, ground_truth_map_file_path, ground_truth_map_info_file_path):

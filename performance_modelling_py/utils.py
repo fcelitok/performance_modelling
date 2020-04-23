@@ -42,9 +42,7 @@ def print_fatal(*args):
     text = ' '.join(map(str, args))
     try:
         text_lines = text.split('\n')
-        print(text_lines)
         n = max(map(len, text_lines))
-        print(n)
         colored_text = colored(text, 'red', attrs=['bold', 'blink'])
         b = colored('*', 'red', attrs=['bold', 'blink', 'reverse'])
         print("{h_border}\n"

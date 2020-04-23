@@ -9,7 +9,7 @@ import yaml
 from collections import defaultdict
 from os import path
 import pickle
-from performance_modelling_ros.utils import print_info, print_error
+from performance_modelling_py.utils import print_info, print_error
 
 
 def cpu_and_memory_usage_metrics(ps_snapshots_folder_path):

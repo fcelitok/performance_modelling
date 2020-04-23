@@ -15,10 +15,7 @@ from os import path
 from scipy.stats import t
 import subprocess
 
-import roslib
-import roslib.packages
-
-from performance_modelling_ros.utils import print_info, print_error
+from performance_modelling_py.utils import print_info, print_error
 
 
 def metric_evaluator(exec_path, poses_path, relations_path, weights, log_path, errors_path, unsorted_errors_path=None):
@@ -50,16 +47,7 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
     relative_errors_dict = dict()
 
     # find the metricEvaluator executable
-    metric_evaluator_package_name = 'performance_modelling'
-    metric_evaluator_exec_name = 'metricEvaluator'
-    metric_evaluator_resources_list = roslib.packages.find_resource(metric_evaluator_package_name, metric_evaluator_exec_name)
-    if len(metric_evaluator_resources_list) > 1:
-        print_error("compute_relative_localization_error: multiple files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
-        return
-    elif len(metric_evaluator_resources_list) == 0:
-        print_error("compute_relative_localization_error: no files named [{resource_name}}] in package [{package_name}]:%s".format(resource_name=metric_evaluator_exec_name, package_name=metric_evaluator_package_name))
-        return
-    metric_evaluator_exec_path = metric_evaluator_resources_list[0]
+    metric_evaluator_exec_path = path.join(path.dirname(path.abspath(__file__)), "metricEvaluator", "metricEvaluator")
 
     # compute acceptable ground truth relation times
     ground_truth_dict = dict()
