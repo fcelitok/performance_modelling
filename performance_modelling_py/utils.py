@@ -54,3 +54,7 @@ def print_fatal(*args):
               "{h_border}".format(h_border=b*(n+4), v_border=b, spaces=' '*n, text=colored_text))
     except:
         print(text)
+
+
+def nanoseconds_to_seconds(nanoseconds):
+    return float(nanoseconds) / 10**9
