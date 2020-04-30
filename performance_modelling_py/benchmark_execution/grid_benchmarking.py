@@ -31,12 +31,12 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, c
 
     # convert components configurations relative paths to absolute paths
     for component, configurations_relative_path_list in components_configurations_dict.items():
-        components_configurations_dict[component] = map(lambda relative_path: path.join(components_configurations_folder, relative_path), configurations_relative_path_list)
+        components_configurations_dict[component] = list(map(lambda relative_path: path.join(components_configurations_folder, relative_path), configurations_relative_path_list))
 
     # convert the dict with {component_name: [configuration_1, configuration_2]} to the list [(component_name, configuration_1), (component_name, configuration_2), ...]
     configurations_alternatives = list()
     for component, configurations_list in components_configurations_dict.items():
-        component_configuration_list_of_tuples = map(lambda configuration: (component, configuration), configurations_list)
+        component_configuration_list_of_tuples = list(map(lambda configuration: (component, configuration), configurations_list))
         configurations_alternatives.append(component_configuration_list_of_tuples)
 
     # obtain the list of combinations from the list of alternatives
