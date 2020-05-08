@@ -1,13 +1,14 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
 
+import glob
 import os
 import traceback
 from os import path
 from PIL.ImageDraw import floodfill
-from PIL import Image
+from PIL import Image, ImageFilter
 
 import numpy as np
 import yaml
@@ -23,7 +24,7 @@ def color_abs_diff(a, b):
     return np.abs(color_diff(a, b))
 
 
-def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_path, ground_truth_map_file_path, do_not_recompute=False, backup_if_exists=False, ground_truth_map_files_dump_path=None):
+def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_path, ground_truth_map_file_path, blur_filter_radius=2, do_not_recompute=False, backup_if_exists=False, ground_truth_map_files_dump_path=None):
 
     if path.exists(ground_truth_map_file_path):
         print_info("file already exists: {}".format(ground_truth_map_file_path))
@@ -32,14 +33,14 @@ def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_pa
             return
 
     gt = Image.open(grid_map_file_path)
-    print_info("opened image, mode: {mode}, image: {im}".format(mode=gt.mode, im=grid_map_file_path))
 
     if gt.mode != 'RGB':
         print('image mode is {mode} ({size}×{ch_num}), converting to RGB'.format(mode=gt.mode, size=gt.size, ch_num=len(gt.split())))
         # remove alpha channel by pasting on white background
         background = Image.new("RGB", gt.size, (254, 254, 254))
         background.paste(gt)
-        gt = background
+        # apply a blur filter to reduce artifacts in images that have been saved to lossy formats
+        gt = background.filter(ImageFilter.BoxBlur(blur_filter_radius))
 
     pixels = gt.load()
 
@@ -86,10 +87,8 @@ def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_pa
         if found:
             break
 
-    print("crop box: left_border: {}, top_border: {}, right_border: {}, bottom_border: {}".format(left_border, top_border, right_border, bottom_border))
     gt = gt.crop(box=(left_border, top_border, right_border, bottom_border))
     pixels = gt.load()
-    print('cropped image: {mode} ({size}×{ch_num})'.format(mode=gt.mode, size=gt.size, ch_num=len(gt.split())))
 
     # convert all free pixels to unknown pixels
     for i in range(gt.size[0]):
@@ -106,19 +105,12 @@ def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_pa
         print_error("convert_grid_map_to_gt_map: map not in origin")
 
     initial_position_meters = np.array([float(info_yaml['robot']['pose']['x']), float(info_yaml['robot']['pose']['y'])])
-    print("initial position (meters):", initial_position_meters)
-
     map_size_meters = np.array([float(info_yaml['map']['size']['x']), float(info_yaml['map']['size']['y'])])
-    print("map_size (meters):", map_size_meters)
     map_size_pixels = np.array(gt.size)
-    print("map_size (pixels):", map_size_pixels)
     resolution = map_size_meters / map_size_pixels * np.array([1, -1])  # meter/pixel, on both axis, except y axis is inverted in image
-    print("resolution:", resolution)
 
     map_center_pixels = map_size_pixels / 2
-    print("map center (pixels):", map_center_pixels)
-    p_x, p_y = initial_position_pixels = map(int, map_center_pixels + initial_position_meters / resolution)
-    print("initial position (pixels):", initial_position_pixels)
+    p_x, p_y = initial_position_pixels = list(map(int, map_center_pixels + initial_position_meters / resolution))
 
     if pixels[p_x, p_y] != (205, 205, 205):
         print_fatal("initial position in a wall pixel")
@@ -134,7 +126,8 @@ def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_pa
         print_info("writing to {}".format(ground_truth_map_file_path))
         gt.save(ground_truth_map_file_path)
         if ground_truth_map_files_dump_path is not None:
-            os.makedirs(path.basename(ground_truth_map_files_dump_path))
+            if not path.exists(ground_truth_map_files_dump_path):
+                os.makedirs(path.basename(ground_truth_map_files_dump_path))
             gt.save(path.join(ground_truth_map_files_dump_path, path.basename(path.dirname(ground_truth_map_file_path))+'.pgm'))
     except IOError:
         print_error("Error while saving image {img}:".format(img=ground_truth_map_file_path))
@@ -145,10 +138,12 @@ def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_pa
 
 
 if __name__ == '__main__':
-    environment_folder = path.expanduser("~/ds/performance_modelling_test_datasets/test/")
-    map_file_path = path.join(environment_folder, "map.png")
-    map_info_file_path = path.join(environment_folder, "grid_world_info.yaml")
-    result_ground_truth_map_file_path = path.join(environment_folder, 'map_ground_truth.pgm')
-    common_ground_truth_map_folder_path = path.expanduser("~/tmp/ground_truth_maps")
-
-    compute_ground_truth_from_grid_map(map_file_path, map_info_file_path, result_ground_truth_map_file_path)
+    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/*")))
+    dump_path = path.expanduser("~/tmp/gt_maps/")
+    print_info("compute_ground_truth_from_grid_map {}%".format(0))
+    for progress, environment_folder in enumerate(environment_folders):
+        print_info("compute_ground_truth_from_grid_map {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))
+        map_file_path = path.join(environment_folder, "data", "map.png")
+        map_info_file_path = path.join(environment_folder, "data", "map_info.yaml")
+        result_ground_truth_file_path = path.join(environment_folder, "data", "map_ground_truth.pgm")
+        compute_ground_truth_from_grid_map(map_file_path, map_info_file_path, result_ground_truth_file_path, ground_truth_map_files_dump_path=dump_path)

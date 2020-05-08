@@ -1,8 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
 
+import glob
 from os import path
 from typing import Optional
 
@@ -110,7 +111,7 @@ def cm_to_body_parts(*argv):
         return tuple(x_cm / inch for x_cm in argv)
 
 
-def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path, do_not_recompute=False, blur_filter_radius=2, occupied_threshold=205, wall_height=2.0):
+def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path, do_not_recompute=False, save_filtered_map=False, blur_filter_radius=2, occupied_threshold=205, wall_height=2.0):
 
     if path.exists(mesh_file_path):
         print_info("file already exists: {}".format(mesh_file_path))
@@ -119,17 +120,17 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
             return
 
     map_image = Image.open(grid_map_file_path)
-    print_info("opened image, mode: {mode}, image: {im}".format(mode=map_image.mode, im=grid_map_file_path))
 
     if map_image.mode != 'RGB':
         print('image mode is {mode} ({size}×{ch_num}), converting to RGB'.format(mode=map_image.mode, size=map_image.size, ch_num=len(map_image.split())))
         # remove alpha channel by pasting on white background
         background = Image.new("RGB", map_image.size, (254, 254, 254))
         background.paste(map_image)
-        # swap the new image and apply a median filter
+        # apply a blur filter to reduce artifacts in images that have been saved to lossy formats
         map_image = background.filter(ImageFilter.BoxBlur(blur_filter_radius))
-        file_path = path.splitext(grid_map_file_path)[0]
-        map_image.save(f"{file_path}_filtered.pgm")
+        if save_filtered_map:
+            file_path = path.splitext(grid_map_file_path)[0]
+            map_image.save(f"{file_path}_filtered.pgm")
 
     pixels = map_image.load()
 
@@ -158,18 +159,13 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
         return
 
     map_size_meters = np.array([float(info_yaml['map']['size']['x']), float(info_yaml['map']['size']['y'])])
-    print("map_size (meters):", map_size_meters)
     map_size_pixels = np.array(map_image.size)
-    print("map_size (pixels):", map_size_pixels)
     resolution = map_size_meters / map_size_pixels * np.array([1, 1])  # meter/pixel, on both axis, except y axis is inverted in image
-    print("resolution:", resolution)
 
     map_floor_height = float(info_yaml['map']['pose']['z'])
     map_offset_meters = np.array([float(info_yaml['map']['pose']['x']), float(info_yaml['map']['pose']['y'])])
-    print("map_offset (meters):", map_offset_meters)
 
-    # pixels_to_world_coordinates
-    def w(x_pixels, y_pixels):
+    def pixels_to_world_coordinates(x_pixels, y_pixels):
         p_pixels = np.array([x_pixels, y_pixels])
         return resolution * p_pixels - 0.5 * map_size_meters + map_offset_meters
 
@@ -182,9 +178,9 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
         south_wall_start: Optional[np.array] = None
         for x in range(north_bitmap.shape[0]):
             if north_wall_start is None and north_bitmap[x, y]:  # wall goes up
-                north_wall_start = w(x, y)
+                north_wall_start = pixels_to_world_coordinates(x, y)
             if north_wall_start is not None and not north_bitmap[x, y]:  # wall goes down
-                north_wall_end = w(x, y)
+                north_wall_end = pixels_to_world_coordinates(x, y)
                 v, n, t = wall_face(*north_wall_start, *north_wall_end, map_floor_height, wall_height, '-y')
                 vertices += v
                 normals += n
@@ -192,9 +188,9 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
                 north_wall_start = None
 
             if south_wall_start is None and south_bitmap[x, y]:  # wall goes up
-                south_wall_start = w(x, y)
-            if south_wall_start is not None and not south_bitmap[x, y]:
-                south_wall_end = w(x, y)
+                south_wall_start = pixels_to_world_coordinates(x, y)
+            if south_wall_start is not None and not south_bitmap[x, y]:  # wall goes down
+                south_wall_end = pixels_to_world_coordinates(x, y)
                 v, n, t = wall_face(*south_wall_start, *south_wall_end, map_floor_height, wall_height, 'y')
                 vertices += v
                 normals += n
@@ -206,9 +202,9 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
         east_wall_start: Optional[np.array] = None
         for y in range(west_bitmap.shape[1]):
             if west_wall_start is None and west_bitmap[x, y]:  # wall goes up
-                west_wall_start = w(x, y)
+                west_wall_start = pixels_to_world_coordinates(x, y)
             if west_wall_start is not None and not west_bitmap[x, y]:  # wall goes down
-                west_wall_end = w(x, y)
+                west_wall_end = pixels_to_world_coordinates(x, y)
                 v, n, t = wall_face(*west_wall_start, *west_wall_end, map_floor_height, wall_height, '-x')
                 vertices += v
                 normals += n
@@ -216,27 +212,14 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
                 west_wall_start = None
 
             if east_wall_start is None and east_bitmap[x, y]:  # wall goes up
-                east_wall_start = w(x, y)
-            if east_wall_start is not None and not east_bitmap[x, y]:
-                east_wall_end = w(x, y)
+                east_wall_start = pixels_to_world_coordinates(x, y)
+            if east_wall_start is not None and not east_bitmap[x, y]:  # wall goes down
+                east_wall_end = pixels_to_world_coordinates(x, y)
                 v, n, t = wall_face(*east_wall_start, *east_wall_end, map_floor_height, wall_height, 'x')
                 vertices += v
                 normals += n
                 triangles += t
                 east_wall_start = None
-
-            # if west_bitmap[x, y]:
-            #     # there is a west-facing wall to the west of this pixel
-            #     v, n, t = wall_face(*w(x, y), *w(x, y + 1), map_floor_height, wall_height, '-x')
-            #     vertices += v
-            #     normals += n
-            #     triangles += t
-            # if east_bitmap[x, y]:
-            #     # there is a east-facing wall to the west of this pixel
-            #     v, n, t = wall_face(*w(x, y), *w(x, y + 1), map_floor_height, wall_height, 'x')
-            #     vertices += v
-            #     normals += n
-            #     triangles += t
 
     mesh = cd.Collada()
     effect = cd.material.Effect("effect0", [], "phong", diffuse=(1, 0, 0), specular=(0, 1, 0))
@@ -257,10 +240,6 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
     cd_triangles_list = list()
     for triangle in triangles:
         cd_triangles_list += triangle.ls
-
-    print("cd_vertices_list", cd_vertices_list)
-    print("cd_normals_list", cd_normals_list)
-    print("cd_triangles_list", cd_triangles_list)
 
     vert_src = cd.source.FloatSource("cubeverts-array", np.array(cd_vertices_list), ('X', 'Y', 'Z'))
     normal_src = cd.source.FloatSource("cubenormals-array", np.array(cd_normals_list), ('X', 'Y', 'Z'))
@@ -284,21 +263,11 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
 
 
 if __name__ == '__main__':
-
-    environment_folder = path.expanduser("~/ds/performance_modelling_test_datasets/airlab/")
-    map_file_path = path.join(environment_folder, "map.png")
-    map_info_file_path = path.join(environment_folder, "stage_world_info.yaml")
-    result_mesh_file_path = path.join(environment_folder, 'test.dae')
-    gridmap_to_mesh(map_file_path, map_info_file_path, result_mesh_file_path)
-
-    environment_folder = path.expanduser("~/ds/performance_modelling_test_datasets/test/")
-    map_file_path = path.join(environment_folder, "map.png")
-    map_info_file_path = path.join(environment_folder, "stage_world_info.yaml")
-    result_mesh_file_path = path.join(environment_folder, 'test.dae')
-    gridmap_to_mesh(map_file_path, map_info_file_path, result_mesh_file_path)
-
-    environment_folder = path.expanduser("~/ds/performance_modelling_test_datasets/7A-2/")
-    map_file_path = path.join(environment_folder, "map.png")
-    map_info_file_path = path.join(environment_folder, "stage_world_info.yaml")
-    result_mesh_file_path = path.join(environment_folder, 'test.dae')
-    gridmap_to_mesh(map_file_path, map_info_file_path, result_mesh_file_path)
+    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/*")))
+    print_info("gridmap_to_mesh {}%".format(0))
+    for progress, environment_folder in enumerate(environment_folders):
+        print_info("gridmap_to_mesh {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))
+        map_file_path = path.join(environment_folder, "data", "map.png")
+        map_info_file_path = path.join(environment_folder, "data", "map_info.yaml")
+        result_mesh_file_path = path.join(environment_folder, "data", "meshes", "extruded_map.dae")
+        gridmap_to_mesh(map_file_path, map_info_file_path, result_mesh_file_path, save_filtered_map=True)
