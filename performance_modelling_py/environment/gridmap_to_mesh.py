@@ -110,7 +110,7 @@ def cm_to_body_parts(*argv):
         return tuple(x_cm / inch for x_cm in argv)
 
 
-def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path, do_not_recompute=False, blur_filter_radius=1, occupied_threshold=205, wall_height=2.0):
+def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path, do_not_recompute=False, blur_filter_radius=2, occupied_threshold=205, wall_height=2.0):
 
     if path.exists(mesh_file_path):
         print_info("file already exists: {}".format(mesh_file_path))
