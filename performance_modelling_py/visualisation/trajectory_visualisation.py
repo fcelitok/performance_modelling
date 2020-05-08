@@ -107,6 +107,6 @@ def save_trajectories_with_covariance_plot(visualisation_output_folder, estimate
     if not path.exists(visualisation_output_folder):
         os.makedirs(visualisation_output_folder)
 
-    figure_output_path = path.join(visualisation_output_folder, "trajectories.svg")
+    figure_output_path = path.join(visualisation_output_folder, "trajectories_with_covariance.svg")
     fig.savefig(figure_output_path)
     plt.close(fig)
