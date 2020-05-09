@@ -24,18 +24,15 @@ def color_abs_diff(a, b):
     return np.abs(color_diff(a, b))
 
 
-def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_path, ground_truth_map_file_path, blur_filter_radius=2, do_not_recompute=False, backup_if_exists=False, ground_truth_map_files_dump_path=None):
+def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_path, ground_truth_map_file_path, blur_filter_radius=0, do_not_recompute=False, backup_if_exists=False, ground_truth_map_files_dump_path=None):
 
-    if path.exists(ground_truth_map_file_path):
-        print_info("file already exists: {}".format(ground_truth_map_file_path))
-        if do_not_recompute:
-            print_info("do_not_recompute: will not recompute the output image")
-            return
+    if path.exists(ground_truth_map_file_path) and  do_not_recompute:
+        print_info("do_not_recompute: will not recompute the output image")
+        return
 
     gt = Image.open(grid_map_file_path)
 
     if gt.mode != 'RGB':
-        print('image mode is {mode} ({size}×{ch_num}), converting to RGB'.format(mode=gt.mode, size=gt.size, ch_num=len(gt.split())))
         # remove alpha channel by pasting on white background
         background = Image.new("RGB", gt.size, (254, 254, 254))
         background.paste(gt)
@@ -123,7 +120,6 @@ def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_pa
         backup_file_if_exists(ground_truth_map_file_path)
 
     try:
-        print_info("writing to {}".format(ground_truth_map_file_path))
         gt.save(ground_truth_map_file_path)
         if ground_truth_map_files_dump_path is not None:
             if not path.exists(ground_truth_map_files_dump_path):
