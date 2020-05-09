@@ -91,6 +91,24 @@ def wall_face(x_1, y_1, x_2, y_2, f, h, orientation):
     return vertices_list, normals_list, triangles_list
 
 
+def wall_top(x_min, y_min, x_max, y_max, h):
+    vertices_list = [
+        Vertex(x_min, y_min, h),
+        Vertex(x_min, y_max, h),
+        Vertex(x_max, y_min, h),
+        Vertex(x_max, y_max, h),
+    ]
+
+    wall_normal = Normal(0, 0, 1)
+    normals_list = [wall_normal]
+
+    triangles_list = [
+        Triangle(vertices_list[2], vertices_list[1], vertices_list[0], wall_normal,  wall_normal,  wall_normal),
+        Triangle(vertices_list[1], vertices_list[2], vertices_list[3], wall_normal,  wall_normal,  wall_normal),
+    ]
+    return vertices_list, normals_list, triangles_list
+
+
 def color_diff(a, b):
     return np.sum(np.array(b) - np.array(a)) / len(a)
 
@@ -114,7 +132,6 @@ def cm_to_body_parts(*argv):
 def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path, do_not_recompute=False, save_filtered_map=False, blur_filter_radius=0, occupied_threshold=205, wall_height=2.0):
 
     if path.exists(mesh_file_path):
-        print_info("file already exists: {}".format(mesh_file_path))
         if do_not_recompute:
             print_info("do_not_recompute: will not recompute the output mesh")
             return
@@ -122,7 +139,6 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
     map_image = Image.open(grid_map_file_path)
 
     if map_image.mode != 'RGB':
-        print('image mode is {mode} ({size}×{ch_num}), converting to RGB'.format(mode=map_image.mode, size=map_image.size, ch_num=len(map_image.split())))
         # remove alpha channel by pasting on white background
         background = Image.new("RGB", map_image.size, (254, 254, 254))
         background.paste(map_image)
@@ -135,8 +151,8 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
     pixels = map_image.load()
 
     # create a bitmap of occupied cells
-    occupied_bitmap = np.zeros((map_image.size[0]+1, map_image.size[1]+1), dtype=int)
     w, h = map_image.size
+    occupied_bitmap = np.zeros((w+1, h+1), dtype=int)
     for y in range(h):
         for x in range(w):
             occupied_bitmap[x, h-1-y] = rgb_less_than(pixels[x, y], (occupied_threshold, occupied_threshold, occupied_threshold))  # pixels < (150, 150, 150) -> black -> occupied -> occupied_bitmap=1
@@ -173,6 +189,7 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
     normals = list()
     triangles = list()
 
+    # make the mesh for the north and south walls
     for y in range(north_bitmap.shape[1]):
         north_wall_start: Optional[np.array] = None
         south_wall_start: Optional[np.array] = None
@@ -197,6 +214,7 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
                 triangles += t
                 south_wall_start = None
 
+    # make the mesh for the west and east walls
     for x in range(west_bitmap.shape[0]):
         west_wall_start: Optional[np.array] = None
         east_wall_start: Optional[np.array] = None
@@ -220,6 +238,30 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
                 normals += n
                 triangles += t
                 east_wall_start = None
+
+    # make the mesh for the top of the walls
+    for y in range(occupied_bitmap.shape[1]):
+        x_min, y_min = None, None
+        for x in range(occupied_bitmap.shape[0]):
+            if x_min is None and occupied_bitmap[x, y]:  # wall goes up
+                x_min, y_min = x, y
+            if x_min is not None and not occupied_bitmap[x, y]:  # wall goes down
+                # find the rectangle covering the most wall by checking each horizontal line
+                x_max = x
+                y_max = None
+                subbitmap = occupied_bitmap[x_min:x_max, y_min:h+1]
+                for square_h in range(subbitmap.shape[1]):
+                    if not np.all(subbitmap[:, square_h]):
+                        y_max = y_min + square_h
+                        break
+                # once found the square, delete the corresponding pixels (so they won't be checked again)
+                occupied_bitmap[x_min:x_max, y_min:y_max] = 0
+                v, n, t = wall_top(*pixels_to_world_coordinates(x_min, y_min),
+                                   *pixels_to_world_coordinates(x_max, y_max), wall_height)
+                vertices += v
+                normals += n
+                triangles += t
+                x_min = None
 
     mesh = cd.Collada()
     effect = cd.material.Effect("effect0", [], "phong", diffuse=(1, 0, 0), specular=(0, 1, 0))
