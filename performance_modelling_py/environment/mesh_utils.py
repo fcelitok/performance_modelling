@@ -12,6 +12,7 @@ import collada as cd
 import yaml
 from PIL import Image, ImageFilter
 from collada import source
+from performance_modelling_py.environment.gridmap_utils import rgb_less_than
 from performance_modelling_py.utils import print_info, print_error
 from scipy import ndimage
 
@@ -109,28 +110,8 @@ def wall_top(x_min, y_min, x_max, y_max, h):
     return vertices_list, normals_list, triangles_list
 
 
-def color_diff(a, b):
-    return np.sum(np.array(b) - np.array(a)) / len(a)
-
-
-def color_abs_diff(a, b):
-    return np.abs(color_diff(a, b))
-
-
-def rgb_less_than(a, b):
-    return a[0] < b[0] and a[1] < b[1] and a[2] < b[2]
-
-
-def cm_to_body_parts(*argv):
-    inch = 2.54
-    if isinstance(argv[0], tuple):
-        return tuple(x_cm / inch for x_cm in argv[0])
-    else:
-        return tuple(x_cm / inch for x_cm in argv)
-
-
 def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path, do_not_recompute=False, save_filtered_map=False, blur_filter_radius=0, occupied_threshold=205, wall_height=2.0):
-
+    # TODO use ground truth as input!!
     if path.exists(mesh_file_path):
         if do_not_recompute:
             print_info("do_not_recompute: will not recompute the output mesh")
@@ -176,7 +157,7 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
 
     map_size_meters = np.array([float(info_yaml['map']['size']['x']), float(info_yaml['map']['size']['y'])])
     map_size_pixels = np.array(map_image.size)
-    resolution = map_size_meters / map_size_pixels * np.array([1, 1])  # meter/pixel, on both axis, except y axis is inverted in image
+    resolution = map_size_meters / map_size_pixels * np.array([1, 1])  # meter/pixel, on both axis
 
     map_floor_height = float(info_yaml['map']['pose']['z'])
     map_offset_meters = np.array([float(info_yaml['map']['pose']['x']), float(info_yaml['map']['pose']['y'])])
@@ -305,7 +286,7 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
 
 
 if __name__ == '__main__':
-    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/*")))
+    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/airlab")))
     print_info("gridmap_to_mesh {}%".format(0))
     for progress, environment_folder in enumerate(environment_folders):
         print_info("gridmap_to_mesh {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))

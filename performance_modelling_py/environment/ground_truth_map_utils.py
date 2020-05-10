@@ -12,21 +12,16 @@ from PIL import Image, ImageFilter
 
 import numpy as np
 import yaml
+from performance_modelling_py.environment.gridmap_utils import color_diff, color_abs_diff, rgb_less_than
 
 from performance_modelling_py.utils import print_info, backup_file_if_exists, print_error, print_fatal
 
 
-def color_diff(a, b):
-    return np.sum(np.array(b) - np.array(a)) / len(a)
+def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_path, ground_truth_map_file_path, unknown=205, occupied_threshold=150,  blur_filter_radius=0, do_not_recompute=False, backup_if_exists=False, ground_truth_map_files_dump_path=None):
+    unknown_rgb = (unknown, unknown, unknown)  # color value of unknown cells in the ground truth map
+    occupied_threshold_rgb = (occupied_threshold, occupied_threshold, occupied_threshold)  # color values in the input map (black/white) less than this value are considered occupied
 
-
-def color_abs_diff(a, b):
-    return np.abs(color_diff(a, b))
-
-
-def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_path, ground_truth_map_file_path, blur_filter_radius=0, do_not_recompute=False, backup_if_exists=False, ground_truth_map_files_dump_path=None):
-
-    if path.exists(ground_truth_map_file_path) and  do_not_recompute:
+    if path.exists(ground_truth_map_file_path) and do_not_recompute:
         print_info("do_not_recompute: will not recompute the output image")
         return
 
@@ -90,10 +85,10 @@ def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_pa
     # convert all free pixels to unknown pixels
     for i in range(gt.size[0]):
         for j in range(gt.size[1]):
-            if color_abs_diff(pixels[i, j], (0, 0, 0)) < 150:  # black -> wall. color_abs_diff must be less than 205 - 0 (difference between occupied black and unknown grey)
+            if rgb_less_than(pixels[i, j], occupied_threshold_rgb):
                 pixels[i, j] = (0, 0, 0)
             else:  # not black -> unknown space
-                pixels[i, j] = (205, 205, 205)
+                pixels[i, j] = unknown_rgb
 
     with open(grid_map_info_file_path, 'r') as info_file:
         info_yaml = yaml.load(info_file)
@@ -109,7 +104,7 @@ def compute_ground_truth_from_grid_map(grid_map_file_path, grid_map_info_file_pa
     map_center_pixels = map_size_pixels / 2
     p_x, p_y = initial_position_pixels = list(map(int, map_center_pixels + initial_position_meters / resolution))
 
-    if pixels[p_x, p_y] != (205, 205, 205):
+    if pixels[p_x, p_y] != unknown_rgb:
         print_fatal("initial position in a wall pixel")
         return
 
