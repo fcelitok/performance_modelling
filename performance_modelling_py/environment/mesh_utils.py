@@ -9,11 +9,9 @@ from typing import Optional
 
 import numpy as np
 import collada as cd
-import yaml
-from PIL import Image, ImageFilter
 from collada import source
-from performance_modelling_py.environment.gridmap_utils import rgb_less_than
-from performance_modelling_py.utils import print_info, print_error
+from performance_modelling_py.environment.gridmap_utils import GroundTruthMap
+from performance_modelling_py.utils import print_info
 from scipy import ndimage
 
 
@@ -110,33 +108,24 @@ def wall_top(x_min, y_min, x_max, y_max, h):
     return vertices_list, normals_list, triangles_list
 
 
-def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path, do_not_recompute=False, save_filtered_map=False, blur_filter_radius=0, occupied_threshold=205, wall_height=2.0):
-    # TODO use ground truth as input!!
+def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=False, map_floor_height=0.0, wall_height=2.0):
+
     if path.exists(mesh_file_path):
         if do_not_recompute:
             print_info("do_not_recompute: will not recompute the output mesh")
             return
 
-    map_image = Image.open(grid_map_file_path)
+    m = GroundTruthMap(grid_map_info_file_path)
+    pixels = m.map_image.load()
 
-    if map_image.mode != 'RGB':
-        # remove alpha channel by pasting on white background
-        background = Image.new("RGB", map_image.size, (254, 254, 254))
-        background.paste(map_image)
-        # apply a blur filter to reduce artifacts in images that have been saved to lossy formats
-        map_image = background.filter(ImageFilter.BoxBlur(blur_filter_radius))
-        if save_filtered_map:
-            file_path = path.splitext(grid_map_file_path)[0]
-            map_image.save(f"{file_path}_filtered.pgm")
-
-    pixels = map_image.load()
-
-    # create a bitmap of occupied cells
-    w, h = map_image.size
+    # occupied_bitmap contains 1 where pixels are occupied (black color value -> wall)
+    # occupied_bitmap coordinates have origin in the image bottom-left with y-up rather than top-left with y-down,
+    # so it is in between image coordinates and map frame coordinates
+    w, h = m.map_image.size
     occupied_bitmap = np.zeros((w+1, h+1), dtype=int)
     for y in range(h):
         for x in range(w):
-            occupied_bitmap[x, h-1-y] = rgb_less_than(pixels[x, y], (occupied_threshold, occupied_threshold, occupied_threshold))  # pixels < (150, 150, 150) -> black -> occupied -> occupied_bitmap=1
+            occupied_bitmap[x, h-1-y] = pixels[x, y] == (0, 0, 0)
 
     # span the image with kernels to find vertical walls, north -> +1, south -> -1
     vertical_edges = ndimage.convolve(occupied_bitmap, np.array([[1, -1]]), mode='constant', cval=0, origin=np.array([0, -1]))
@@ -148,24 +137,6 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
     west_bitmap = horizontal_edges == 1
     east_bitmap = horizontal_edges == -1
 
-    with open(grid_map_info_file_path, 'r') as info_file:
-        info_yaml = yaml.load(info_file)
-
-    if info_yaml['map']['pose']['theta'] != 0:
-        print_error("gridmap_to_mesh: map rotation not supported")
-        return
-
-    map_size_meters = np.array([float(info_yaml['map']['size']['x']), float(info_yaml['map']['size']['y'])])
-    map_size_pixels = np.array(map_image.size)
-    resolution = map_size_meters / map_size_pixels * np.array([1, 1])  # meter/pixel, on both axis
-
-    map_floor_height = float(info_yaml['map']['pose']['z'])
-    map_offset_meters = np.array([float(info_yaml['map']['pose']['x']), float(info_yaml['map']['pose']['y'])])
-
-    def pixels_to_world_coordinates(x_pixels, y_pixels):
-        p_pixels = np.array([x_pixels, y_pixels])
-        return resolution * p_pixels - 0.5 * map_size_meters + map_offset_meters
-
     vertices = list()
     normals = list()
     triangles = list()
@@ -176,9 +147,9 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
         south_wall_start: Optional[np.array] = None
         for x in range(north_bitmap.shape[0]):
             if north_wall_start is None and north_bitmap[x, y]:  # wall goes up
-                north_wall_start = pixels_to_world_coordinates(x, y)
+                north_wall_start = m.image_y_up_to_map_frame_coordinates(x, y)
             if north_wall_start is not None and not north_bitmap[x, y]:  # wall goes down
-                north_wall_end = pixels_to_world_coordinates(x, y)
+                north_wall_end = m.image_y_up_to_map_frame_coordinates(x, y)
                 v, n, t = wall_face(*north_wall_start, *north_wall_end, map_floor_height, wall_height, '-y')
                 vertices += v
                 normals += n
@@ -186,9 +157,9 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
                 north_wall_start = None
 
             if south_wall_start is None and south_bitmap[x, y]:  # wall goes up
-                south_wall_start = pixels_to_world_coordinates(x, y)
+                south_wall_start = m.image_y_up_to_map_frame_coordinates(x, y)
             if south_wall_start is not None and not south_bitmap[x, y]:  # wall goes down
-                south_wall_end = pixels_to_world_coordinates(x, y)
+                south_wall_end = m.image_y_up_to_map_frame_coordinates(x, y)
                 v, n, t = wall_face(*south_wall_start, *south_wall_end, map_floor_height, wall_height, 'y')
                 vertices += v
                 normals += n
@@ -201,9 +172,9 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
         east_wall_start: Optional[np.array] = None
         for y in range(west_bitmap.shape[1]):
             if west_wall_start is None and west_bitmap[x, y]:  # wall goes up
-                west_wall_start = pixels_to_world_coordinates(x, y)
+                west_wall_start = m.image_y_up_to_map_frame_coordinates(x, y)
             if west_wall_start is not None and not west_bitmap[x, y]:  # wall goes down
-                west_wall_end = pixels_to_world_coordinates(x, y)
+                west_wall_end = m.image_y_up_to_map_frame_coordinates(x, y)
                 v, n, t = wall_face(*west_wall_start, *west_wall_end, map_floor_height, wall_height, '-x')
                 vertices += v
                 normals += n
@@ -211,9 +182,9 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
                 west_wall_start = None
 
             if east_wall_start is None and east_bitmap[x, y]:  # wall goes up
-                east_wall_start = pixels_to_world_coordinates(x, y)
+                east_wall_start = m.image_y_up_to_map_frame_coordinates(x, y)
             if east_wall_start is not None and not east_bitmap[x, y]:  # wall goes down
-                east_wall_end = pixels_to_world_coordinates(x, y)
+                east_wall_end = m.image_y_up_to_map_frame_coordinates(x, y)
                 v, n, t = wall_face(*east_wall_start, *east_wall_end, map_floor_height, wall_height, 'x')
                 vertices += v
                 normals += n
@@ -237,8 +208,8 @@ def gridmap_to_mesh(grid_map_file_path, grid_map_info_file_path, mesh_file_path,
                         break
                 # once found the square, delete the corresponding pixels (so they won't be checked again)
                 occupied_bitmap[x_min:x_max, y_min:y_max] = 0
-                v, n, t = wall_top(*pixels_to_world_coordinates(x_min, y_min),
-                                   *pixels_to_world_coordinates(x_max, y_max), wall_height)
+                v, n, t = wall_top(*m.image_y_up_to_map_frame_coordinates(x_min, y_min),
+                                   *m.image_y_up_to_map_frame_coordinates(x_max, y_max), wall_height)
                 vertices += v
                 normals += n
                 triangles += t
@@ -290,7 +261,6 @@ if __name__ == '__main__':
     print_info("gridmap_to_mesh {}%".format(0))
     for progress, environment_folder in enumerate(environment_folders):
         print_info("gridmap_to_mesh {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))
-        map_file_path = path.join(environment_folder, "data", "map.png")
-        map_info_file_path = path.join(environment_folder, "data", "map_info.yaml")
+        map_info_file_path = path.join(environment_folder, "data", "map.yaml")
         result_mesh_file_path = path.join(environment_folder, "data", "meshes", "extruded_map.dae")
-        gridmap_to_mesh(map_file_path, map_info_file_path, result_mesh_file_path, save_filtered_map=True)
+        gridmap_to_mesh(map_info_file_path, result_mesh_file_path)
