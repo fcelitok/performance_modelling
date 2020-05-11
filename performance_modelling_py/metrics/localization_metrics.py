@@ -84,7 +84,7 @@ def compute_ground_truth_interpolated_poses(estimated_poses_df, ground_truth_pos
     return interpolated_ground_truth_df
 
 
-def relative_localization_error_metrics(log_output_folder, estimated_poses_file_path, ground_truth_poses_file_path, alpha=0.99, max_error=0.02):
+def relative_localization_error_metrics(log_output_folder, estimated_poses_file_path, ground_truth_poses_file_path, alpha=0.99, max_error=0.02, compute_sequential_relations=False):
     """
     Generates the ordered and the random relations files and computes the metrics
     """
@@ -245,58 +245,59 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
     relative_errors_dict['random_relations']['rotation']['n'] = float(metric_evaluator_re_r_results_df['NumMeasures'][0])
 
     # sequential relations
-    ordered_relations_file_path = path.join(log_output_folder, "ordered_relations")
-    with open(ordered_relations_file_path, "w") as relations_file_ordered:
+    if compute_sequential_relations:
+        ordered_relations_file_path = path.join(log_output_folder, "ordered_relations")
+        with open(ordered_relations_file_path, "w") as relations_file_ordered:
 
-        idx_delta = int(len(interpolated_ground_truth_df.index)/n_samples)
-        if idx_delta == 0:
-            idx_delta = 1
+            idx_delta = int(len(interpolated_ground_truth_df.index)/n_samples)
+            if idx_delta == 0:
+                idx_delta = 1
 
-        for idx, first_row in interpolated_ground_truth_df.iloc[::idx_delta].iloc[0: -1].iterrows():
-            second_row = interpolated_ground_truth_df.iloc[idx + idx_delta]
+            for idx, first_row in interpolated_ground_truth_df.iloc[::idx_delta].iloc[0: -1].iterrows():
+                second_row = interpolated_ground_truth_df.iloc[idx + idx_delta]
 
-            rel = get_matrix_diff((first_row['x_gt'], first_row['y_gt'], first_row['theta_gt']), (second_row['x_gt'], second_row['y_gt'], second_row['theta_gt']))
-            x_relative = rel[0, 3]
-            y_relative = rel[1, 3]
-            theta_relative = math.atan2(rel[1, 0], rel[0, 0])
+                rel = get_matrix_diff((first_row['x_gt'], first_row['y_gt'], first_row['theta_gt']), (second_row['x_gt'], second_row['y_gt'], second_row['theta_gt']))
+                x_relative = rel[0, 3]
+                y_relative = rel[1, 3]
+                theta_relative = math.atan2(rel[1, 0], rel[0, 0])
 
-            relations_file_ordered.write("{t_1} {t_2} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(t_1=first_row['t'], t_2=second_row['t'], x=x_relative, y=y_relative, theta=theta_relative))
+                relations_file_ordered.write("{t_1} {t_2} {x} {y} 0.000000 0.000000 0.000000 {theta}\n".format(t_1=first_row['t'], t_2=second_row['t'], x=x_relative, y=y_relative, theta=theta_relative))
 
-    relative_errors_dict['sequential_relations'] = dict()
+        relative_errors_dict['sequential_relations'] = dict()
 
-    metric_evaluator_ordered_t_results_csv_path = path.join(log_output_folder, "ordered_t.csv")
-    metric_evaluator(exec_path=metric_evaluator_exec_path,
-                     poses_path=estimated_poses_carmen_file_path,
-                     relations_path=ordered_relations_file_path,
-                     weights="{1, 1, 1, 0, 0, 0}",
-                     log_path=path.join(log_output_folder, "ordered_t.log"),
-                     errors_path=metric_evaluator_ordered_t_results_csv_path,
-                     unsorted_errors_path=path.join(log_output_folder, "ordered_t_unsorted_errors"))
+        metric_evaluator_ordered_t_results_csv_path = path.join(log_output_folder, "ordered_t.csv")
+        metric_evaluator(exec_path=metric_evaluator_exec_path,
+                         poses_path=estimated_poses_carmen_file_path,
+                         relations_path=ordered_relations_file_path,
+                         weights="{1, 1, 1, 0, 0, 0}",
+                         log_path=path.join(log_output_folder, "ordered_t.log"),
+                         errors_path=metric_evaluator_ordered_t_results_csv_path,
+                         unsorted_errors_path=path.join(log_output_folder, "ordered_t_unsorted_errors"))
 
-    metric_evaluator_ordered_t_results_df = pd.read_csv(metric_evaluator_ordered_t_results_csv_path, sep=', ', engine='python')
-    relative_errors_dict['sequential_relations']['translation'] = dict()
-    relative_errors_dict['sequential_relations']['translation']['mean'] = float(metric_evaluator_ordered_t_results_df['Mean'][0])
-    relative_errors_dict['sequential_relations']['translation']['std'] = float(metric_evaluator_ordered_t_results_df['Std'][0])
-    relative_errors_dict['sequential_relations']['translation']['min'] = float(metric_evaluator_ordered_t_results_df['Min'][0])
-    relative_errors_dict['sequential_relations']['translation']['max'] = float(metric_evaluator_ordered_t_results_df['Max'][0])
-    relative_errors_dict['sequential_relations']['translation']['n'] = float(metric_evaluator_ordered_t_results_df['NumMeasures'][0])
+        metric_evaluator_ordered_t_results_df = pd.read_csv(metric_evaluator_ordered_t_results_csv_path, sep=', ', engine='python')
+        relative_errors_dict['sequential_relations']['translation'] = dict()
+        relative_errors_dict['sequential_relations']['translation']['mean'] = float(metric_evaluator_ordered_t_results_df['Mean'][0])
+        relative_errors_dict['sequential_relations']['translation']['std'] = float(metric_evaluator_ordered_t_results_df['Std'][0])
+        relative_errors_dict['sequential_relations']['translation']['min'] = float(metric_evaluator_ordered_t_results_df['Min'][0])
+        relative_errors_dict['sequential_relations']['translation']['max'] = float(metric_evaluator_ordered_t_results_df['Max'][0])
+        relative_errors_dict['sequential_relations']['translation']['n'] = float(metric_evaluator_ordered_t_results_df['NumMeasures'][0])
 
-    metric_evaluator_ordered_r_results_csv_path = path.join(log_output_folder, "ordered_r.csv")
-    metric_evaluator(exec_path=metric_evaluator_exec_path,
-                     poses_path=estimated_poses_carmen_file_path,
-                     relations_path=ordered_relations_file_path,
-                     weights="{0, 0, 0, 1, 1, 1}",
-                     log_path=path.join(log_output_folder, "ordered_r.log"),
-                     errors_path=metric_evaluator_ordered_r_results_csv_path,
-                     unsorted_errors_path=path.join(log_output_folder, "ordered_r_unsorted_errors"))
+        metric_evaluator_ordered_r_results_csv_path = path.join(log_output_folder, "ordered_r.csv")
+        metric_evaluator(exec_path=metric_evaluator_exec_path,
+                         poses_path=estimated_poses_carmen_file_path,
+                         relations_path=ordered_relations_file_path,
+                         weights="{0, 0, 0, 1, 1, 1}",
+                         log_path=path.join(log_output_folder, "ordered_r.log"),
+                         errors_path=metric_evaluator_ordered_r_results_csv_path,
+                         unsorted_errors_path=path.join(log_output_folder, "ordered_r_unsorted_errors"))
 
-    metric_evaluator_ordered_r_results_df = pd.read_csv(metric_evaluator_ordered_r_results_csv_path, sep=', ', engine='python')
-    relative_errors_dict['sequential_relations']['rotation'] = dict()
-    relative_errors_dict['sequential_relations']['rotation']['mean'] = float(metric_evaluator_ordered_r_results_df['Mean'][0])
-    relative_errors_dict['sequential_relations']['rotation']['std'] = float(metric_evaluator_ordered_r_results_df['Std'][0])
-    relative_errors_dict['sequential_relations']['rotation']['min'] = float(metric_evaluator_ordered_r_results_df['Min'][0])
-    relative_errors_dict['sequential_relations']['rotation']['max'] = float(metric_evaluator_ordered_r_results_df['Max'][0])
-    relative_errors_dict['sequential_relations']['rotation']['n'] = float(metric_evaluator_ordered_r_results_df['NumMeasures'][0])
+        metric_evaluator_ordered_r_results_df = pd.read_csv(metric_evaluator_ordered_r_results_csv_path, sep=', ', engine='python')
+        relative_errors_dict['sequential_relations']['rotation'] = dict()
+        relative_errors_dict['sequential_relations']['rotation']['mean'] = float(metric_evaluator_ordered_r_results_df['Mean'][0])
+        relative_errors_dict['sequential_relations']['rotation']['std'] = float(metric_evaluator_ordered_r_results_df['Std'][0])
+        relative_errors_dict['sequential_relations']['rotation']['min'] = float(metric_evaluator_ordered_r_results_df['Min'][0])
+        relative_errors_dict['sequential_relations']['rotation']['max'] = float(metric_evaluator_ordered_r_results_df['Max'][0])
+        relative_errors_dict['sequential_relations']['rotation']['n'] = float(metric_evaluator_ordered_r_results_df['NumMeasures'][0])
 
     return relative_errors_dict
 
