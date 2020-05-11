@@ -10,7 +10,7 @@ from typing import Optional
 import numpy as np
 import collada as cd
 from collada import source
-from performance_modelling_py.environment.gridmap_utils import GroundTruthMap
+from performance_modelling_py.environment.ground_truth_map_utils import GroundTruthMap
 from performance_modelling_py.utils import print_info
 from scipy import ndimage
 
@@ -257,7 +257,7 @@ def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=Fa
 
 
 if __name__ == '__main__':
-    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/airlab")))
+    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/*")))
     print_info("gridmap_to_mesh {}%".format(0))
     for progress, environment_folder in enumerate(environment_folders):
         print_info("gridmap_to_mesh {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))
