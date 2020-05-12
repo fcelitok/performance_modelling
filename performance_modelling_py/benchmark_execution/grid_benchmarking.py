@@ -31,21 +31,23 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, c
 
     # convert components configurations relative paths to absolute paths
     for component, configurations_relative_path_list in components_configurations_dict.items():
-        components_configurations_dict[component] = map(lambda relative_path: path.join(components_configurations_folder, relative_path), configurations_relative_path_list)
+        components_configurations_dict[component] = list(map(lambda relative_path: path.join(components_configurations_folder, relative_path), configurations_relative_path_list))
 
     # convert the dict with {component_name: [configuration_1, configuration_2]} to the list [(component_name, configuration_1), (component_name, configuration_2), ...]
     configurations_alternatives = list()
     for component, configurations_list in components_configurations_dict.items():
-        component_configuration_list_of_tuples = map(lambda configuration: (component, configuration), configurations_list)
+        component_configuration_list_of_tuples = list(map(lambda configuration: (component, configuration), configurations_list))
         configurations_alternatives.append(component_configuration_list_of_tuples)
 
     # obtain the list of combinations from the list of alternatives
-    # example: component 1 with configurations [A, B, C, D], and component 2 with configurations [x, y]:
+    # example: component_1 with configurations [A, B, C, D], and component_2 with configurations [x, y]:
     #   itertools.product([A, B, C, D], [x, y]) --> [[A, x], [A, y], [B, x], [B, y], [C, x], [C, y], [D, x], [D, y]]
+    #   itertools.product([(gmapping, gmapping_1.yaml), (gmapping, gmapping_2.yaml)], [(move_base, move_base_1.yaml), (move_base, move_base_2.yaml)])
+    #   --> [ [(gmapping, gmapping_1.yaml), (move_base, move_base_1.yaml)], [(gmapping, gmapping_1.yaml), (move_base, move_base_2.yaml)], [(gmapping, gmapping_2.yaml), (move_base, move_base_1.yaml)], [(gmapping, gmapping_2.yaml), (move_base, move_base_2.yaml)] ]
     configuration_combinations_lists = list(itertools.product(*configurations_alternatives))
 
     # convert the list of lists to a list of dicts
-    configuration_combinations_dicts = map(dict, configuration_combinations_lists)
+    configuration_combinations_dicts = list(map(dict, configuration_combinations_lists))
 
     num_combinations = len(configuration_combinations_dicts)
     num_environments = len(environment_folders)
@@ -81,13 +83,13 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, c
                                              show_ros_info=show_ros_info,
                                              headless=headless,
                                              environment_folder=environment_folder,
-                                             component_configuration_files=components_configurations,
-                                             supervisor_configuration_file=supervisor_configuration_path)
+                                             component_configuration_file_paths=components_configurations,
+                                             supervisor_configuration_file_path=supervisor_configuration_path)
 
                     r.execute_run()
 
-                    if r.ros_has_shutdown:
-                        print_info("benchmark: run {run_index} interrupted".format(run_index=i))
+                    if r.aborted:
+                        print_info("benchmark: run {run_index} aborted".format(run_index=i))
                         print_info("benchmark: interrupted")
                         sys.exit(0)
                     else:
