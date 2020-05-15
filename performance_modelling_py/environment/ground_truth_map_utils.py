@@ -14,6 +14,7 @@ import numpy as np
 import yaml
 
 from performance_modelling_py.utils import print_info, backup_file_if_exists, print_error, print_fatal
+from scipy import ndimage
 
 
 def trim(im, border_color):
@@ -115,7 +116,13 @@ class GroundTruthMap:
     FREE = 0
     UNKNOWN = 1
     OCCUPIED = 2
+
+    occupied = 0  # color value of occupied cells in the ground truth map image
+    occupied_rgb = (occupied, occupied, occupied)
     unknown = 205  # color value of unknown cells in the ground truth map image
+    unknown_rgb = (unknown, unknown, unknown)
+    free = 254  # color value of free cells in the ground truth map image
+    free_rgb = (free, free, free)
 
     def __init__(self, map_info_path):
 
@@ -216,6 +223,30 @@ class GroundTruthMap:
                     return sampled_poses
 
         raise NotFoundException("maximum number of attempts reached")
+
+    def edge_bitmaps(self, occupancy_function):
+        pixels = self.map_image.load()
+
+        # occupied_bitmap contains 1 where pixels are occupied (black color value -> wall)
+        # occupied_bitmap coordinates have origin in the image bottom-left with y-up rather than top-left with y-down,
+        # so it is in between image coordinates and map frame coordinates
+        w, h = self.map_image.size
+        occupied_bitmap = np.zeros((w+1, h+1), dtype=int)
+        for y in range(h):
+            for x in range(w):
+                occupied_bitmap[x, h-1-y] = occupancy_function(pixels[x, y])
+
+        # span the image with kernels to find vertical walls, north -> +1, south -> -1
+        vertical_edges = ndimage.convolve(occupied_bitmap, np.array([[1, -1]]), mode='constant', cval=0, origin=np.array([0, -1]))
+        north_bitmap = vertical_edges == 1
+        south_bitmap = vertical_edges == -1
+
+        # span the image with kernels to find horizontal walls, west -> +1, east -> -1
+        horizontal_edges = ndimage.convolve(occupied_bitmap, np.array([[1], [-1]]), mode='constant', cval=0, origin=np.array([-1, 0]))
+        west_bitmap = horizontal_edges == 1
+        east_bitmap = horizontal_edges == -1
+
+        return occupied_bitmap, north_bitmap, south_bitmap, west_bitmap, east_bitmap
 
 
 if __name__ == '__main__':
