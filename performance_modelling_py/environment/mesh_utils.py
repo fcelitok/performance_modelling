@@ -4,6 +4,7 @@
 from __future__ import print_function
 
 import glob
+import os
 from os import path
 from typing import Optional
 
@@ -114,6 +115,9 @@ def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=Fa
         if do_not_recompute:
             print_info("do_not_recompute: will not recompute the output mesh")
             return
+
+    if not path.exists(path.dirname(mesh_file_path)):
+        os.makedirs(path.dirname(mesh_file_path))
 
     m = GroundTruthMap(grid_map_info_file_path)
     pixels = m.map_image.load()

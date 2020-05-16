@@ -7,6 +7,8 @@ import glob
 import os
 import traceback
 from os import path
+
+import networkx as nx
 from PIL.ImageDraw import floodfill
 from PIL import Image, ImageFilter, ImageChops
 
@@ -15,6 +17,8 @@ import yaml
 
 from performance_modelling_py.utils import print_info, backup_file_if_exists, print_error, print_fatal
 from scipy import ndimage
+from scipy.spatial import Delaunay
+import matplotlib.pyplot as plt
 
 
 def trim(im, border_color):
@@ -25,9 +29,37 @@ def trim(im, border_color):
         return im.crop(bbox)
 
 
-def black_white_to_ground_truth_map(input_map_path, map_info_path, unknown=205, occupied_threshold=150, blur_filter_radius=0, do_not_recompute=False, backup_if_exists=False, map_files_dump_path=None):
-    unknown_rgb = (unknown, unknown, unknown)  # color value of unknown cells in the ground truth map
+def cm_to_body_parts(*argv):
+    inch = 2.54
+    if isinstance(argv[0], tuple):
+        return tuple(x_cm / inch for x_cm in argv[0])
+    else:
+        return tuple(x_cm / inch for x_cm in argv)
 
+
+def circle_given_points(p1, p2, p3):
+    """
+    Center and radius of a circle given 3 points.
+    """
+
+    p12 = p1 - p2
+    p23 = p2 - p3
+
+    bc = (np.sum(p1**2) - np.sum(p2**2)) / 2
+    cd = (np.sum(p2**2) - np.sum(p3**2)) / 2
+
+    det = p12[0] * p23[1] - p23[0] * p12[1]
+
+    if abs(det) < 1.0e-6:
+        return (p1 + p2 + p3)/3, np.inf
+
+    c = np.array((bc * p23[1] - cd * p12[1], cd * p12[0] - bc * p23[0])) / det
+    r = np.sqrt(np.sum((c - p1)**2))
+
+    return c, r
+
+
+def black_white_to_ground_truth_map(input_map_path, map_info_path, occupied_threshold=150, blur_filter_radius=0, do_not_recompute=False, backup_if_exists=False, map_files_dump_path=None):
     with open(map_info_path) as map_info_file:
         map_info = yaml.load(map_info_file)
 
@@ -44,7 +76,7 @@ def black_white_to_ground_truth_map(input_map_path, map_info_path, unknown=205, 
 
     if input_image.mode != 'RGB':
         # remove alpha channel by pasting on white background
-        background = Image.new("RGB", input_image.size, (254, 254, 254))
+        background = Image.new("RGB", input_image.size, GroundTruthMap.free_rgb)
         background.paste(input_image)
         input_image = background
 
@@ -54,11 +86,11 @@ def black_white_to_ground_truth_map(input_map_path, map_info_path, unknown=205, 
 
     # saturate all colors below the threshold to black and all values above threshold to the unknown color value (they will be colored to free later)
     # this is needed because some images have been heavily compressed and contain all sort of colors
-    threshold_image = input_image.point(lambda original_value: 0 if original_value < occupied_threshold else unknown)
+    threshold_image = input_image.point(lambda original_value: GroundTruthMap.occupied if original_value < occupied_threshold else GroundTruthMap.unknown)
     threshold_image.save(path.expanduser("~/tmp/threshold_image.pgm"))
 
     # trim borders not containing black pixels (some simulators ignore non-black borders while placing the pixels in the simulated map and computing its resolution, so they need to be ignored in the following calculations)
-    trimmed_image = trim(threshold_image, unknown_rgb)
+    trimmed_image = trim(threshold_image, GroundTruthMap.unknown_rgb)
     trimmed_image.save(path.expanduser("~/tmp/trimmed_image.pgm"))
 
     map_offset_meters = np.array(map_info['origin'][0:2], dtype=float)
@@ -79,7 +111,7 @@ def black_white_to_ground_truth_map(input_map_path, map_info_path, unknown=205, 
         return
 
     pixels = trimmed_image.load()
-    if pixels[i_x, i_y] != unknown_rgb:
+    if pixels[i_x, i_y] != GroundTruthMap.unknown_rgb:
         print_fatal("initial position in a wall pixel")
         return
 
@@ -87,7 +119,7 @@ def black_white_to_ground_truth_map(input_map_path, map_info_path, unknown=205, 
     map_image = trimmed_image
 
     # convert to free the pixels accessible from the initial position
-    floodfill(map_image, initial_position_pixels, (254, 254, 254), thresh=10)
+    floodfill(map_image, initial_position_pixels, GroundTruthMap.free_rgb, thresh=10)
 
     if backup_if_exists:
         backup_file_if_exists(map_image_path)
@@ -118,10 +150,10 @@ class GroundTruthMap:
     OCCUPIED = 2
 
     occupied = 0  # color value of occupied cells in the ground truth map image
-    occupied_rgb = (occupied, occupied, occupied)
     unknown = 205  # color value of unknown cells in the ground truth map image
+    free = 255  # color value of free cells in the ground truth map image
+    occupied_rgb = (occupied, occupied, occupied)
     unknown_rgb = (unknown, unknown, unknown)
-    free = 254  # color value of free cells in the ground truth map image
     free_rgb = (free, free, free)
 
     def __init__(self, map_info_path):
@@ -148,6 +180,7 @@ class GroundTruthMap:
         self.map_frame_meters = -self.map_offset_meters
 
         self._occupancy_map = None
+        self._complete_free_voronoi_graph = None
 
     @property
     def occupancy_map(self):
@@ -248,13 +281,126 @@ class GroundTruthMap:
 
         return occupied_bitmap, north_bitmap, south_bitmap, west_bitmap, east_bitmap
 
+    @property
+    def voronoi_graph(self):
+        if self._complete_free_voronoi_graph is None:
+            occupied_bitmap, north_bitmap, south_bitmap, west_bitmap, east_bitmap = self.edge_bitmaps(lambda pixel: pixel != self.free_rgb)
+
+            wall_points_set = set()
+            w, h = north_bitmap.shape
+            for x in range(w):
+                for y in range(h):
+                    if north_bitmap[x, y] or south_bitmap[x, y]:
+                        wall_points_set.add((x, y))
+                        wall_points_set.add((x + 1, y))
+                    if west_bitmap[x, y] or east_bitmap[x, y]:
+                        wall_points_set.add((x, y))
+                        wall_points_set.add((x, y + 1))
+
+            wall_points = np.array(tuple(wall_points_set))
+            delaunay_graph = Delaunay(wall_points)
+
+            vertices_list = list()
+            radii_list = list()
+            for vertex_indices in delaunay_graph.simplices:
+                p1, p2, p3 = wall_points[vertex_indices, :]
+                center, radius = circle_given_points(p1, p2, p3)
+                vertices_list.append(center)
+                radii_list.append(radius)
+
+            voronoi_vertices = np.array(vertices_list)
+            voronoi_vertices_int_pixels = np.array(voronoi_vertices, dtype=int)
+            voronoi_vertices_occupancy_bitmap = occupied_bitmap[voronoi_vertices_int_pixels[:, 0], voronoi_vertices_int_pixels[:, 1]]
+
+            free_indices_set = set(list(np.where(1 - voronoi_vertices_occupancy_bitmap)[0]))
+
+            self._complete_free_voronoi_graph = nx.Graph()
+            for triangle_index, (n1, n2, n3) in enumerate(delaunay_graph.neighbors):
+                if triangle_index in free_indices_set:
+                    self._complete_free_voronoi_graph.add_node(triangle_index, vertex=voronoi_vertices[triangle_index, :], radius=radii_list[triangle_index])
+                    if n1 < triangle_index and n1 != -1 and n1 in free_indices_set:
+                        self._complete_free_voronoi_graph.add_edge(triangle_index, int(n1))
+                    if n2 < triangle_index and n2 != -1 and n2 in free_indices_set:
+                        self._complete_free_voronoi_graph.add_edge(triangle_index, int(n2))
+                    if n3 < triangle_index and n3 != -1 and n3 in free_indices_set:
+                        self._complete_free_voronoi_graph.add_edge(triangle_index, int(n3))
+
+        return self._complete_free_voronoi_graph
+
+    def save_voronoi_plot(self, voronoi_plot_file_path, do_not_recompute=False):
+
+        if path.exists(voronoi_plot_file_path) and do_not_recompute:
+            print_info("do_not_recompute: will not recompute the voronoi plot")
+            return
+
+        if not path.exists(path.dirname(voronoi_plot_file_path)):
+            os.makedirs(path.dirname(voronoi_plot_file_path))
+
+        _, north_bitmap, south_bitmap, west_bitmap, east_bitmap = self.edge_bitmaps(lambda pixel: pixel != self.free_rgb)
+
+        v_wall_points = set()
+        h_wall_points = set()
+
+        w, h = north_bitmap.shape
+        for x in range(w):
+            for y in range(h):
+                if north_bitmap[x, y] or south_bitmap[x, y]:
+                    v_wall_points.add((x, y))
+                    v_wall_points.add((x + 1, y))
+                if west_bitmap[x, y] or east_bitmap[x, y]:
+                    h_wall_points.add((x, y))
+                    h_wall_points.add((x, y + 1))
+
+        fig, ax = plt.subplots()
+        fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
+
+        # plot circles
+        for _, node_data in self.voronoi_graph.nodes.data():
+            ax.add_artist(plt.Circle(node_data['vertex'], node_data['radius'], color='grey', fill=False, linewidth=0.05))
+
+        for node_index, node_data in self.voronoi_graph.nodes.data():
+            x_1, y_1 = node_data['vertex']
+
+            # plot leaf vertices
+            if len(list(self.voronoi_graph.neighbors(node_index))) == 1:
+                ax.scatter(x_1, y_1, color='red', s=2.0, marker='o')
+
+            # plot chain vertices
+            if len(list(self.voronoi_graph.neighbors(node_index))) == 3:
+                ax.scatter(x_1, y_1, color='blue', s=2.0, marker='o')
+
+            # plot segments
+            for neighbor_index in self.voronoi_graph.neighbors(node_index):
+                if neighbor_index < node_index:
+                    x_2, y_2 = self.voronoi_graph.nodes.data()[neighbor_index]['vertex']
+                    ax.plot((x_1, x_2), (y_1, y_2), color='black', linewidth=1.0)
+
+        # plot vertical and horizontal wall points
+        ax.scatter(*zip(*v_wall_points), s=15.0, marker='_')
+        ax.scatter(*zip(*h_wall_points), s=15.0, marker='|')
+
+        fig.savefig(voronoi_plot_file_path)
+        plt.close(fig)
+
 
 if __name__ == '__main__':
-    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/*")))
+    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/airlab")))
     dump_path = path.expanduser("~/tmp/gt_maps/")
     print_info("compute_ground_truth_from_grid_map {}%".format(0))
     for progress, environment_folder in enumerate(environment_folders):
         print_info("compute_ground_truth_from_grid_map {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))
-        source_map_file_path = path.join(environment_folder, "data", "source_map.png")
         map_info_file_path = path.join(environment_folder, "data", "map.yaml")
+
+        # compute GroundTruthMap data from source image
+        source_map_file_path = path.join(environment_folder, "data", "source_map.png")
         black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, map_files_dump_path=dump_path)
+
+        # compute voronoi plot
+        result_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
+        m = GroundTruthMap(map_info_file_path)
+        m.save_voronoi_plot(result_voronoi_plot_file_path)
+
+        # compute mesh
+        result_mesh_file_path = path.join(environment_folder, "data", "meshes", "extruded_map.dae")
+        from performance_modelling_py.environment.mesh_utils import gridmap_to_mesh
+        gridmap_to_mesh(map_info_file_path, result_mesh_file_path)
