@@ -113,7 +113,7 @@ def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=Fa
 
     if path.exists(mesh_file_path):
         if do_not_recompute:
-            print_info("do_not_recompute: will not recompute the output mesh")
+            print_info("do_not_recompute: will not recompute the output mesh {}".format(mesh_file_path))
             return
 
     if not path.exists(path.dirname(mesh_file_path)):
@@ -151,9 +151,9 @@ def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=Fa
         south_wall_start: Optional[np.array] = None
         for x in range(north_bitmap.shape[0]):
             if north_wall_start is None and north_bitmap[x, y]:  # wall goes up
-                north_wall_start = m.image_y_up_to_map_frame_coordinates(x, y)
+                north_wall_start = m.image_y_up_to_map_frame_coordinates(np.array((x, y)))
             if north_wall_start is not None and not north_bitmap[x, y]:  # wall goes down
-                north_wall_end = m.image_y_up_to_map_frame_coordinates(x, y)
+                north_wall_end = m.image_y_up_to_map_frame_coordinates(np.array((x, y)))
                 v, n, t = wall_face(*north_wall_start, *north_wall_end, map_floor_height, wall_height, '-y')
                 vertices += v
                 normals += n
@@ -161,9 +161,9 @@ def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=Fa
                 north_wall_start = None
 
             if south_wall_start is None and south_bitmap[x, y]:  # wall goes up
-                south_wall_start = m.image_y_up_to_map_frame_coordinates(x, y)
+                south_wall_start = m.image_y_up_to_map_frame_coordinates(np.array((x, y)))
             if south_wall_start is not None and not south_bitmap[x, y]:  # wall goes down
-                south_wall_end = m.image_y_up_to_map_frame_coordinates(x, y)
+                south_wall_end = m.image_y_up_to_map_frame_coordinates(np.array((x, y)))
                 v, n, t = wall_face(*south_wall_start, *south_wall_end, map_floor_height, wall_height, 'y')
                 vertices += v
                 normals += n
@@ -176,9 +176,9 @@ def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=Fa
         east_wall_start: Optional[np.array] = None
         for y in range(west_bitmap.shape[1]):
             if west_wall_start is None and west_bitmap[x, y]:  # wall goes up
-                west_wall_start = m.image_y_up_to_map_frame_coordinates(x, y)
+                west_wall_start = m.image_y_up_to_map_frame_coordinates(np.array((x, y)))
             if west_wall_start is not None and not west_bitmap[x, y]:  # wall goes down
-                west_wall_end = m.image_y_up_to_map_frame_coordinates(x, y)
+                west_wall_end = m.image_y_up_to_map_frame_coordinates(np.array((x, y)))
                 v, n, t = wall_face(*west_wall_start, *west_wall_end, map_floor_height, wall_height, '-x')
                 vertices += v
                 normals += n
@@ -186,9 +186,9 @@ def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=Fa
                 west_wall_start = None
 
             if east_wall_start is None and east_bitmap[x, y]:  # wall goes up
-                east_wall_start = m.image_y_up_to_map_frame_coordinates(x, y)
+                east_wall_start = m.image_y_up_to_map_frame_coordinates(np.array((x, y)))
             if east_wall_start is not None and not east_bitmap[x, y]:  # wall goes down
-                east_wall_end = m.image_y_up_to_map_frame_coordinates(x, y)
+                east_wall_end = m.image_y_up_to_map_frame_coordinates(np.array((x, y)))
                 v, n, t = wall_face(*east_wall_start, *east_wall_end, map_floor_height, wall_height, 'x')
                 vertices += v
                 normals += n
@@ -212,8 +212,8 @@ def gridmap_to_mesh(grid_map_info_file_path, mesh_file_path, do_not_recompute=Fa
                         break
                 # once found the square, delete the corresponding pixels (so they won't be checked again)
                 occupied_bitmap[x_min:x_max, y_min:y_max] = 0
-                v, n, t = wall_top(*m.image_y_up_to_map_frame_coordinates(x_min, y_min),
-                                   *m.image_y_up_to_map_frame_coordinates(x_max, y_max), wall_height)
+                v, n, t = wall_top(*m.image_y_up_to_map_frame_coordinates(np.array((x_min, y_min))),
+                                   *m.image_y_up_to_map_frame_coordinates(np.array((x_max, y_max))), wall_height)
                 vertices += v
                 normals += n
                 triangles += t

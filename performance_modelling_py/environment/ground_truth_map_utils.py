@@ -208,8 +208,7 @@ class GroundTruthMap:
         p_pixels = np.array([x_pixels, y_pixels])
         return self.resolution * (np.array([0, h]) + np.array([1, -1]) * p_pixels) - self.map_frame_meters
 
-    def image_y_up_to_map_frame_coordinates(self, x_pixels, y_pixels):
-        p_pixels = np.array([x_pixels, y_pixels])
+    def image_y_up_to_map_frame_coordinates(self, p_pixels):
         return self.resolution * p_pixels - self.map_frame_meters
 
     def sample_robot_pose_from_free_cells(self, robot_radius, num_poses=1, max_attempts=100):
@@ -300,16 +299,21 @@ class GroundTruthMap:
             wall_points = np.array(tuple(wall_points_set))
             delaunay_graph = Delaunay(wall_points)
 
-            vertices_list = list()
-            radii_list = list()
+            vertices_meters_list = list()
+            vertices_pixels_list = list()
+            radii_meters_list = list()
             for vertex_indices in delaunay_graph.simplices:
-                p1, p2, p3 = wall_points[vertex_indices, :]
-                center, radius = circle_given_points(p1, p2, p3)
-                vertices_list.append(center)
-                radii_list.append(radius)
+                p1_p, p2_p, p3_p = wall_points[vertex_indices, :]
+                center_p, _ = circle_given_points(p1_p, p2_p, p3_p)
+                vertices_pixels_list.append(center_p)
 
-            voronoi_vertices = np.array(vertices_list)
-            voronoi_vertices_int_pixels = np.array(voronoi_vertices, dtype=int)
+                p1_m, p2_m, p3_m = self.image_y_up_to_map_frame_coordinates(wall_points[vertex_indices, :])
+                center_m, radius_m = circle_given_points(p1_m, p2_m, p3_m)
+                vertices_meters_list.append(center_m)
+                radii_meters_list.append(radius_m)
+
+            voronoi_vertices_meters = np.array(vertices_meters_list)
+            voronoi_vertices_int_pixels = np.array(vertices_pixels_list, dtype=int)
             voronoi_vertices_occupancy_bitmap = occupied_bitmap[voronoi_vertices_int_pixels[:, 0], voronoi_vertices_int_pixels[:, 1]]
 
             free_indices_set = set(list(np.where(1 - voronoi_vertices_occupancy_bitmap)[0]))
@@ -317,7 +321,12 @@ class GroundTruthMap:
             self._complete_free_voronoi_graph = nx.Graph()
             for triangle_index, (n1, n2, n3) in enumerate(delaunay_graph.neighbors):
                 if triangle_index in free_indices_set:
-                    self._complete_free_voronoi_graph.add_node(triangle_index, vertex=voronoi_vertices[triangle_index, :], radius=radii_list[triangle_index])
+
+                    self._complete_free_voronoi_graph.add_node(
+                        triangle_index,
+                        vertex=voronoi_vertices_meters[triangle_index, :],
+                        radius=radii_meters_list[triangle_index])
+
                     if n1 < triangle_index and n1 != -1 and n1 in free_indices_set:
                         self._complete_free_voronoi_graph.add_edge(triangle_index, int(n1))
                     if n2 < triangle_index and n2 != -1 and n2 in free_indices_set:
@@ -330,33 +339,17 @@ class GroundTruthMap:
     def save_voronoi_plot(self, voronoi_plot_file_path, do_not_recompute=False):
 
         if path.exists(voronoi_plot_file_path) and do_not_recompute:
-            print_info("do_not_recompute: will not recompute the voronoi plot")
+            print_info("do_not_recompute: will not recompute the voronoi plot {}".format(voronoi_plot_file_path))
             return
 
         if not path.exists(path.dirname(voronoi_plot_file_path)):
             os.makedirs(path.dirname(voronoi_plot_file_path))
-
-        _, north_bitmap, south_bitmap, west_bitmap, east_bitmap = self.edge_bitmaps(lambda pixel: pixel != self.free_rgb)
-
-        v_wall_points = set()
-        h_wall_points = set()
-
-        w, h = north_bitmap.shape
-        for x in range(w):
-            for y in range(h):
-                if north_bitmap[x, y] or south_bitmap[x, y]:
-                    v_wall_points.add((x, y))
-                    v_wall_points.add((x + 1, y))
-                if west_bitmap[x, y] or east_bitmap[x, y]:
-                    h_wall_points.add((x, y))
-                    h_wall_points.add((x, y + 1))
-
         fig, ax = plt.subplots()
         fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
 
         # plot circles
         for _, node_data in self.voronoi_graph.nodes.data():
-            ax.add_artist(plt.Circle(node_data['vertex'], node_data['radius'], color='grey', fill=False, linewidth=0.05))
+            ax.add_artist(plt.Circle(node_data['vertex'], node_data['radius'], color='grey', fill=False, linewidth=0.2))
 
         for node_index, node_data in self.voronoi_graph.nodes.data():
             x_1, y_1 = node_data['vertex']
@@ -376,8 +369,25 @@ class GroundTruthMap:
                     ax.plot((x_1, x_2), (y_1, y_2), color='black', linewidth=1.0)
 
         # plot vertical and horizontal wall points
-        ax.scatter(*zip(*v_wall_points), s=15.0, marker='_')
-        ax.scatter(*zip(*h_wall_points), s=15.0, marker='|')
+        _, north_bitmap, south_bitmap, west_bitmap, east_bitmap = self.edge_bitmaps(lambda pixel: pixel != self.free_rgb)
+        h_wall_points_pixels_set = set()
+        v_wall_points_pixels_set = set()
+
+        w, h = north_bitmap.shape
+        for x in range(w):
+            for y in range(h):
+                if north_bitmap[x, y] or south_bitmap[x, y]:
+                    h_wall_points_pixels_set.add((x, y))
+                    h_wall_points_pixels_set.add((x + 1, y))
+                if west_bitmap[x, y] or east_bitmap[x, y]:
+                    v_wall_points_pixels_set.add((x, y))
+                    v_wall_points_pixels_set.add((x, y + 1))
+
+        h_wall_points_meters = self.image_y_up_to_map_frame_coordinates(np.array(list(h_wall_points_pixels_set)))
+        v_wall_points_meters = self.image_y_up_to_map_frame_coordinates(np.array(list(v_wall_points_pixels_set)))
+
+        ax.scatter(h_wall_points_meters[:, 0], h_wall_points_meters[:, 1], s=15.0, marker='_')
+        ax.scatter(v_wall_points_meters[:, 0], v_wall_points_meters[:, 1], s=15.0, marker='|')
 
         fig.savefig(voronoi_plot_file_path)
         plt.close(fig)
@@ -388,19 +398,20 @@ if __name__ == '__main__':
     dump_path = path.expanduser("~/tmp/gt_maps/")
     print_info("compute_ground_truth_from_grid_map {}%".format(0))
     for progress, environment_folder in enumerate(environment_folders):
-        print_info("compute_ground_truth_from_grid_map {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))
         map_info_file_path = path.join(environment_folder, "data", "map.yaml")
 
         # compute GroundTruthMap data from source image
         source_map_file_path = path.join(environment_folder, "data", "source_map.png")
-        black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, map_files_dump_path=dump_path)
+        black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=True, map_files_dump_path=dump_path)
 
         # compute voronoi plot
         result_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
         m = GroundTruthMap(map_info_file_path)
-        m.save_voronoi_plot(result_voronoi_plot_file_path)
+        m.save_voronoi_plot(result_voronoi_plot_file_path, do_not_recompute=False)
 
         # compute mesh
-        result_mesh_file_path = path.join(environment_folder, "data", "meshes", "extruded_map.dae")
         from performance_modelling_py.environment.mesh_utils import gridmap_to_mesh
-        gridmap_to_mesh(map_info_file_path, result_mesh_file_path)
+        result_mesh_file_path = path.join(environment_folder, "data", "meshes", "extruded_map.dae")
+        gridmap_to_mesh(map_info_file_path, result_mesh_file_path, do_not_recompute=True)
+
+        print_info("compute_ground_truth_from_grid_map {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))
