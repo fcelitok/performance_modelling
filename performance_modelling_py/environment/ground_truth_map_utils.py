@@ -394,10 +394,12 @@ class GroundTruthMap:
 
 
 if __name__ == '__main__':
-    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset/airlab")))
+    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset_v3/*")))
     dump_path = path.expanduser("~/tmp/gt_maps/")
-    print_info("compute_ground_truth_from_grid_map {}%".format(0))
+    print_info("computing environment data {}%".format(0))
     for progress, environment_folder in enumerate(environment_folders):
+        print_info("computing environment data {}% {}".format(progress * 100 // len(environment_folders), environment_folder))
+
         map_info_file_path = path.join(environment_folder, "data", "map.yaml")
 
         # compute GroundTruthMap data from source image
@@ -407,11 +409,11 @@ if __name__ == '__main__':
         # compute voronoi plot
         result_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
         m = GroundTruthMap(map_info_file_path)
-        m.save_voronoi_plot(result_voronoi_plot_file_path, do_not_recompute=False)
+        m.save_voronoi_plot(result_voronoi_plot_file_path, do_not_recompute=True)
 
         # compute mesh
         from performance_modelling_py.environment.mesh_utils import gridmap_to_mesh
         result_mesh_file_path = path.join(environment_folder, "data", "meshes", "extruded_map.dae")
         gridmap_to_mesh(map_info_file_path, result_mesh_file_path, do_not_recompute=True)
 
-        print_info("compute_ground_truth_from_grid_map {}% {}".format((progress + 1)*100//len(environment_folders), environment_folder))
+        print_info("computing environment data {}% done".format((progress + 1) * 100 // len(environment_folders)))
