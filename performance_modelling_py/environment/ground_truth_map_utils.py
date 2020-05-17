@@ -7,14 +7,12 @@ import glob
 import os
 import traceback
 from os import path
-
+import time
 import networkx as nx
 from PIL.ImageDraw import floodfill
 from PIL import Image, ImageFilter, ImageChops
-
 import numpy as np
 import yaml
-
 from performance_modelling_py.utils import print_info, backup_file_if_exists, print_error, print_fatal
 from scipy import ndimage
 from scipy.spatial import Delaunay
@@ -336,23 +334,35 @@ class GroundTruthMap:
 
         return self._complete_free_voronoi_graph
 
-    def save_voronoi_plot(self, voronoi_plot_file_path, do_not_recompute=False):
-
+    def save_voronoi_plot(self, voronoi_plot_file_path, do_not_recompute=False, timeout=120, max_nodes=2000, min_radius=0.2):
         if path.exists(voronoi_plot_file_path) and do_not_recompute:
             print_info("do_not_recompute: will not recompute the voronoi plot {}".format(voronoi_plot_file_path))
             return
 
         if not path.exists(path.dirname(voronoi_plot_file_path)):
             os.makedirs(path.dirname(voronoi_plot_file_path))
+
         fig, ax = plt.subplots()
         fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
 
-        # plot circles
-        for _, node_data in self.voronoi_graph.nodes.data():
-            ax.add_artist(plt.Circle(node_data['vertex'], node_data['radius'], color='grey', fill=False, linewidth=0.2))
+        print("computing voronoi graph")
+        vg = self.voronoi_graph
 
+        start_time = time.time()
+        print(f"plotting. nodes: {min(max_nodes, vg.number_of_nodes())}/{vg.number_of_nodes()}")
+
+        num_nodes = 0
+        nth = max(1, self.voronoi_graph.number_of_nodes()//max_nodes)
         for node_index, node_data in self.voronoi_graph.nodes.data():
+            num_nodes += 1
+            if num_nodes % nth:
+                continue
+
             x_1, y_1 = node_data['vertex']
+            radius_1 = node_data['radius']
+
+            if radius_1 < min_radius:
+                continue
 
             # plot leaf vertices
             if len(list(self.voronoi_graph.neighbors(node_index))) == 1:
@@ -365,8 +375,17 @@ class GroundTruthMap:
             # plot segments
             for neighbor_index in self.voronoi_graph.neighbors(node_index):
                 if neighbor_index < node_index:
-                    x_2, y_2 = self.voronoi_graph.nodes.data()[neighbor_index]['vertex']
-                    ax.plot((x_1, x_2), (y_1, y_2), color='black', linewidth=1.0)
+                    radius_2 = self.voronoi_graph.nodes.data()[neighbor_index]['radius']
+                    if radius_2 > min_radius:
+                        x_2, y_2 = self.voronoi_graph.nodes.data()[neighbor_index]['vertex']
+                        ax.plot((x_1, x_2), (y_1, y_2), color='black', linewidth=1.0)
+
+            # plot circles
+            ax.add_artist(plt.Circle(node_data['vertex'], radius_1, color='grey', fill=False, linewidth=0.2))
+
+            if time.time() - start_time > timeout:
+                print("timeout")
+                break
 
         # plot vertical and horizontal wall points
         _, north_bitmap, south_bitmap, west_bitmap, east_bitmap = self.edge_bitmaps(lambda pixel: pixel != self.free_rgb)
@@ -409,7 +428,7 @@ if __name__ == '__main__':
         # compute voronoi plot
         result_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
         m = GroundTruthMap(map_info_file_path)
-        m.save_voronoi_plot(result_voronoi_plot_file_path, do_not_recompute=True)
+        m.save_voronoi_plot(result_voronoi_plot_file_path, do_not_recompute=False)
 
         # compute mesh
         from performance_modelling_py.environment.mesh_utils import gridmap_to_mesh
