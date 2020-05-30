@@ -188,6 +188,9 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
 
     # Select the biggest of the two
     n_samples = max(n_samples_t, n_samples_r)
+    if n_samples < 10:
+        print_error("n_samples too low", n_samples, n_samples_t, n_samples_r)
+        return
 
     with open(relations_re_file_path, "w") as relations_file_re:
         for _ in range(n_samples):
