@@ -319,7 +319,6 @@ class GroundTruthMap:
             self._complete_free_voronoi_graph = nx.Graph()
             for triangle_index, (n1, n2, n3) in enumerate(delaunay_graph.neighbors):
                 if triangle_index in free_indices_set:
-
                     self._complete_free_voronoi_graph.add_node(
                         triangle_index,
                         vertex=voronoi_vertices_meters[triangle_index, :],
@@ -332,28 +331,72 @@ class GroundTruthMap:
                     if n3 < triangle_index and n3 != -1 and n3 in free_indices_set:
                         self._complete_free_voronoi_graph.add_edge(triangle_index, int(n3))
 
+            for n1, n2 in list(self._complete_free_voronoi_graph.edges):
+                p1 = self._complete_free_voronoi_graph.nodes[n1]['vertex']
+                p2 = self._complete_free_voronoi_graph.nodes[n2]['vertex']
+                self._complete_free_voronoi_graph.edges[n1, n2]['voronoi_path_distance'] = np.sqrt(np.sum((p2 - p1)**2))
+
         return self._complete_free_voronoi_graph
 
-    def save_voronoi_plot(self, voronoi_plot_file_path, do_not_recompute=False, timeout=120, max_nodes=2000, min_radius=0.2):
-        if path.exists(voronoi_plot_file_path) and do_not_recompute:
-            print_info("do_not_recompute: will not recompute the voronoi plot {}".format(voronoi_plot_file_path))
+    def reduced_voronoi_graph(self, minimum_radius):
+
+        min_radius_voronoi_graph = self.voronoi_graph.subgraph(filter(
+            lambda n: self.voronoi_graph.nodes[n]['radius'] >= minimum_radius,
+            self.voronoi_graph.nodes
+        ))
+
+        chain_nodes = list(filter(
+            lambda n: len(list(min_radius_voronoi_graph.neighbors(n))) == 2,
+            min_radius_voronoi_graph.nodes
+        ))
+
+        reduced_voronoi_graph: nx.Graph = min_radius_voronoi_graph.copy()
+        for n2 in chain_nodes:
+            n1, n3 = reduced_voronoi_graph.neighbors(n2)
+            w1 = reduced_voronoi_graph.edges[n1, n2]['voronoi_path_distance']
+            w2 = reduced_voronoi_graph.edges[n2, n3]['voronoi_path_distance']
+            reduced_voronoi_graph.remove_node(n2)
+            reduced_voronoi_graph.add_edge(n1, n3, voronoi_path_distance=w1+w2)
+
+        return reduced_voronoi_graph
+
+    def deleaved_reduced_voronoi_graph(self, minimum_radius):
+
+        deleaved_reduced_voronoi_graph = self.reduced_voronoi_graph(minimum_radius).copy()
+        leaf_nodes = list(filter(
+            lambda n: len(list(deleaved_reduced_voronoi_graph.neighbors(n))) == 1,
+            deleaved_reduced_voronoi_graph.nodes
+        ))
+        deleaved_reduced_voronoi_graph.remove_nodes_from(leaf_nodes)
+
+        return deleaved_reduced_voronoi_graph
+
+    def save_voronoi_plot(self, plot_file_path, graph=None, do_not_recompute=False, timeout=120, max_nodes=2000, min_radius=None):
+        if path.exists(plot_file_path) and do_not_recompute:
+            print_info("do_not_recompute: will not recompute the voronoi plot {}".format(plot_file_path))
             return
 
-        if not path.exists(path.dirname(voronoi_plot_file_path)):
-            os.makedirs(path.dirname(voronoi_plot_file_path))
+        if not path.exists(path.dirname(plot_file_path)):
+            os.makedirs(path.dirname(plot_file_path))
+
+        if min_radius is None:
+            min_radius = 4 * self.resolution
+
+        if graph is None:
+            graph = self.voronoi_graph.subgraph(filter(
+                lambda n: self.voronoi_graph.nodes[n]['radius'] >= min_radius,
+                self.voronoi_graph.nodes
+            ))
 
         fig, ax = plt.subplots()
         fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
 
-        print("computing voronoi graph")
-        vg = self.voronoi_graph
-
         start_time = time.time()
-        print(f"plotting. nodes: {min(max_nodes, vg.number_of_nodes())}/{vg.number_of_nodes()}")
+        print(f"plotting. nodes: {min(max_nodes, graph.number_of_nodes())}/{graph.number_of_nodes()}")
 
         num_nodes = 0
-        nth = max(1, self.voronoi_graph.number_of_nodes()//max_nodes)
-        for node_index, node_data in self.voronoi_graph.nodes.data():
+        nth = max(1, graph.number_of_nodes() // max_nodes)
+        for node_index, node_data in graph.nodes.data():
             num_nodes += 1
             if num_nodes % nth:
                 continue
@@ -365,19 +408,19 @@ class GroundTruthMap:
                 continue
 
             # plot leaf vertices
-            if len(list(self.voronoi_graph.neighbors(node_index))) == 1:
-                ax.scatter(x_1, y_1, color='red', s=2.0, marker='o')
+            if len(list(graph.neighbors(node_index))) == 1:
+                ax.scatter(x_1, y_1, color='red', s=4.0, marker='o')
 
             # plot chain vertices
-            if len(list(self.voronoi_graph.neighbors(node_index))) == 3:
-                ax.scatter(x_1, y_1, color='blue', s=2.0, marker='o')
+            if len(list(graph.neighbors(node_index))) == 3:
+                ax.scatter(x_1, y_1, color='blue', s=4.0, marker='o')
 
             # plot segments
-            for neighbor_index in self.voronoi_graph.neighbors(node_index):
+            for neighbor_index in graph.neighbors(node_index):
                 if neighbor_index < node_index:
-                    radius_2 = self.voronoi_graph.nodes.data()[neighbor_index]['radius']
+                    radius_2 = graph.nodes[neighbor_index]['radius']
                     if radius_2 > min_radius:
-                        x_2, y_2 = self.voronoi_graph.nodes.data()[neighbor_index]['vertex']
+                        x_2, y_2 = graph.nodes[neighbor_index]['vertex']
                         ax.plot((x_1, x_2), (y_1, y_2), color='black', linewidth=1.0)
 
             # plot circles
@@ -408,12 +451,12 @@ class GroundTruthMap:
         ax.scatter(h_wall_points_meters[:, 0], h_wall_points_meters[:, 1], s=15.0, marker='_')
         ax.scatter(v_wall_points_meters[:, 0], v_wall_points_meters[:, 1], s=15.0, marker='|')
 
-        fig.savefig(voronoi_plot_file_path)
+        fig.savefig(plot_file_path)
         plt.close(fig)
 
 
 if __name__ == '__main__':
-    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset_v3/*")))
+    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset_v3/airlab")))
     dump_path = path.expanduser("~/tmp/gt_maps/")
     print_info("computing environment data {}%".format(0))
     for progress, environment_folder in enumerate(environment_folders):
@@ -426,9 +469,15 @@ if __name__ == '__main__':
         black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=True, map_files_dump_path=dump_path)
 
         # compute voronoi plot
-        result_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
+        recompute_plots = True
+        robot_radius_plot = 2 * 0.2
+        voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
+        reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "reduced_voronoi.svg")
+        deleaved_reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "deleaved_reduced_voronoi.svg")
         m = GroundTruthMap(map_info_file_path)
-        m.save_voronoi_plot(result_voronoi_plot_file_path, do_not_recompute=False)
+        m.save_voronoi_plot(voronoi_plot_file_path, min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
+        m.save_voronoi_plot(reduced_voronoi_plot_file_path, graph=m.reduced_voronoi_graph(minimum_radius=robot_radius_plot), min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
+        m.save_voronoi_plot(deleaved_reduced_voronoi_plot_file_path, graph=m.deleaved_reduced_voronoi_graph(robot_radius_plot), min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
 
         # compute mesh
         from performance_modelling_py.environment.mesh_utils import gridmap_to_mesh
