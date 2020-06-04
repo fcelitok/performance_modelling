@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 import asyncio
 from os import path
 from sys import argv
@@ -32,37 +33,9 @@ class Component(object):
         launchfile_path = path.join(get_package_share_directory(self._package_name), "launch", self._launchfile_name)
         launch_description_source = PythonLaunchDescriptionSource(launchfile_path)
 
-        ld = LaunchDescription([
+        self.launch_description = LaunchDescription([
             IncludeLaunchDescription(launch_description_source, launch_arguments=self._launch_arguments)
         ])
-
-        self._launch_service = LaunchService(argv=argv)
-        self._launch_service.include_launch_description(ld)
-        self._loop = osrf_pycommon.process_utils.get_loop()
-
-        self._launch_task = None
-
-    def launch(self):
-        if self._launch_task is not None:
-            print_error("Component.launch: component {} was already launched".format(self.name))
-
-        self._launch_task = self._loop.create_task(self._launch_service.run_async())
-
-    def launch_and_wait_to_finish(self):
-        if self._launch_task is not None:
-            print_error("Component.launch_and_wait_to_finish: component {} was already launched".format(self.name))
-
-        self._launch_task = self._loop.create_task(self._launch_service.run_async())
-        self._loop.run_until_complete(self._launch_task)
-
-    def shutdown(self):
-        if self._launch_task is None:
-            print_error("Component.shutdown: component {} has not been launched".format(self.name))
-            return
-
-        if not self._launch_task.done():
-            asyncio.ensure_future(self._launch_service.shutdown(), loop=self._loop)
-            self._loop.run_until_complete(self._launch_task)
 
     @property
     def package_name(self):
@@ -71,3 +44,35 @@ class Component(object):
     @property
     def launchfile_name(self):
         return self._launchfile_name
+
+
+class ComponentsLauncher:
+    def __init__(self):
+        self._components_list = list()
+        self._launch_task = None
+        self._loop = None
+        self._launch_service = None
+
+    def add_component(self, component):
+        assert(isinstance(component, Component))
+        self._components_list.append(component)
+
+    def launch(self):
+        components_launch_description_list = map(lambda c: c.launch_description, self._components_list)
+        launch_description = LaunchDescription(components_launch_description_list)
+
+        self._launch_service = LaunchService(argv=argv)
+        self._launch_service.include_launch_description(launch_description)
+
+        self._loop = osrf_pycommon.process_utils.get_loop()
+        self._launch_task = self._loop.create_task(self._launch_service.run_async())
+        self._loop.run_until_complete(self._launch_task)
+
+    def shutdown(self):
+        if self._launch_task is None:
+            print_error("ComponentsLauncher.shutdown: components launcher has not been launched")
+            return
+
+        if not self._launch_task.done():
+            asyncio.ensure_future(self._launch_service.shutdown(), loop=self._loop)
+            self._loop.run_until_complete(self._launch_task)
