@@ -1,5 +1,4 @@
 import glob
-import os
 import subprocess
 from os import path
 
@@ -13,6 +12,8 @@ dataset_files = glob.glob(dataset_path + '/**/*.dae', recursive=True) + \
 for file_path in dataset_files:
     file_size = path.getsize(file_path)
     print(file_size // 1024, 'KiB', file_path)
-    subprocess.call(['tar', '-cJf', file_path + '.tar.xz', file_path])
-
-
+    file_dir = path.dirname(file_path)
+    file_name = path.basename(file_path)
+    cmd = ['tar', '-cJf', file_name + '.tar.xz', file_name]
+    print(f"executing {' '.join(cmd)} in {file_dir}")
+    subprocess.call(cmd, cwd=file_dir)
