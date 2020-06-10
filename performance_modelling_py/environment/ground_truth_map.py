@@ -177,6 +177,8 @@ class GroundTruthMap:
         self.map_size_meters = self.map_size_pixels * self.resolution
         self.map_frame_meters = -self.map_offset_meters
 
+        self.initial_position = map_info['initial_pose']
+
         self._occupancy_map = None
         self._complete_free_voronoi_graph = None
 
