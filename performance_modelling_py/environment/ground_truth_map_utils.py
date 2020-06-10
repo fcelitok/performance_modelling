@@ -456,9 +456,12 @@ class GroundTruthMap:
 
 
 if __name__ == '__main__':
-    environment_folders = sorted(glob.glob(path.expanduser("~/ds/performance_modelling/dataset_v3/airlab")))
+    environment_folders = sorted(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/test_datasets/dataset/*"))))
     dump_path = path.expanduser("~/tmp/gt_maps/")
     print_info("computing environment data {}%".format(0))
+    recompute_data = True
+    recompute_plots = True
+
     for progress, environment_folder in enumerate(environment_folders):
         print_info("computing environment data {}% {}".format(progress * 100 // len(environment_folders), environment_folder))
 
@@ -466,10 +469,9 @@ if __name__ == '__main__':
 
         # compute GroundTruthMap data from source image
         source_map_file_path = path.join(environment_folder, "data", "source_map.png")
-        black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=True, map_files_dump_path=dump_path)
+        black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=not recompute_data, map_files_dump_path=dump_path)
 
         # compute voronoi plot
-        recompute_plots = True
         robot_radius_plot = 2 * 0.2
         voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
         reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "reduced_voronoi.svg")
@@ -482,6 +484,6 @@ if __name__ == '__main__':
         # compute mesh
         from performance_modelling_py.environment.mesh_utils import gridmap_to_mesh
         result_mesh_file_path = path.join(environment_folder, "data", "meshes", "extruded_map.dae")
-        gridmap_to_mesh(map_info_file_path, result_mesh_file_path, do_not_recompute=True)
+        gridmap_to_mesh(map_info_file_path, result_mesh_file_path, do_not_recompute=not recompute_data)
 
         print_info("computing environment data {}% done".format((progress + 1) * 100 // len(environment_folders)))
