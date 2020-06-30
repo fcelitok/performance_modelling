@@ -352,7 +352,7 @@ class GroundTruthMap:
             min_radius_voronoi_graph.nodes
         ))
 
-        reduced_voronoi_graph: nx.Graph = min_radius_voronoi_graph.copy()
+        reduced_voronoi_graph = min_radius_voronoi_graph.copy()
         for n2 in chain_nodes:
             n1, n3 = reduced_voronoi_graph.neighbors(n2)
             w1 = reduced_voronoi_graph.edges[n1, n2]['voronoi_path_distance']
@@ -394,7 +394,7 @@ class GroundTruthMap:
         fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
 
         start_time = time.time()
-        print(f"plotting. nodes: {min(max_nodes, graph.number_of_nodes())}/{graph.number_of_nodes()}")
+        print("plotting. nodes: {}/{}".format(min(max_nodes, graph.number_of_nodes()), graph.number_of_nodes()))
 
         num_nodes = 0
         nth = max(1, graph.number_of_nodes() // max_nodes)
