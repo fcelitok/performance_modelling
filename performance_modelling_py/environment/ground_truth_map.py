@@ -59,7 +59,7 @@ def circle_given_points(p1, p2, p3):
 
 def black_white_to_ground_truth_map(input_map_path, map_info_path, occupied_threshold=150, blur_filter_radius=0, do_not_recompute=False, backup_if_exists=False, map_files_dump_path=None):
     with open(map_info_path) as map_info_file:
-        map_info = yaml.load(map_info_file)
+        map_info = yaml.safe_load(map_info_file)
 
     if path.isabs(map_info['image']):
         map_image_path = map_info['image']
@@ -157,7 +157,7 @@ class GroundTruthMap:
     def __init__(self, map_info_path):
 
         with open(map_info_path) as map_info_file:
-            map_info = yaml.load(map_info_file)
+            map_info = yaml.safe_load(map_info_file)
 
         if path.isabs(map_info['image']):
             map_image_path = map_info['image']
