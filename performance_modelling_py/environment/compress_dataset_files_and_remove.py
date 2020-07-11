@@ -24,11 +24,11 @@ for file_path in dataset_files:
     file_dir = path.dirname(file_path)
     file_name = path.basename(file_path)
     cmd = ['tar', '-cJf', file_name + '.tar.xz', file_name]
-    print(f"executing {' '.join(cmd)} in {file_dir}")
+    print("executing {cmd} in {file_dir}".format(cmd=' '.join(cmd), file_dir=file_dir))
     retcode = subprocess.call(cmd, cwd=file_dir)
     if retcode == 0:
         # print('cmd=', ['rm', file_name], 'cwd=', file_dir)
-        print(f"executing rm {file_name} in {file_dir}")
+        print("executing rm {file_name} in {file_dir}".format(file_name=file_name, file_dir=file_dir))
         subprocess.call(['rm', file_name], cwd=file_dir)
     else:
-        print(f"tar exit code: {retcode}")
+        print("tar exit code: {retcode}".format(retcode=retcode))
