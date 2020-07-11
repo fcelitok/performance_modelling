@@ -4,8 +4,12 @@
 import glob
 import subprocess
 from os import path
+from sys import argv
 
-dataset_path = path.expanduser("~/ds/performance_modelling/test_datasets/dataset")
+if len(argv) > 1:
+    dataset_path = path.expanduser(argv[1])
+else:
+    dataset_path = path.expanduser("~/ds/performance_modelling/test_datasets/dataset")
 
 dataset_files = glob.glob(dataset_path + '/**/*.dae', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.pgm', recursive=True) + \
