@@ -39,108 +39,126 @@ def get_yaml(yaml_file_path):
         return yaml.load(yaml_file)
 
 
-def collect_data(base_run_folder_path, cache_file_path=None, invalidate_cache=True):
-
-    print(base_run_folder_path, cache_file_path, invalidate_cache)
+def collect_data(base_run_folder_path, cache_file_path, invalidate_cache=False):
 
     base_run_folder = path.expanduser(base_run_folder_path)
-    if cache_file_path is not None:
-        cache_file_path = path.expanduser(cache_file_path)
-    elif invalidate_cache:
-        print_error("Flag invalidate_cache is set but no cache file is provided.")
+    cache_file_path = path.expanduser(cache_file_path)
 
     if not path.isdir(base_run_folder):
         print_error("base_run_folder does not exists or is not a directory".format(base_run_folder))
-        sys.exit(-1)
+        return None, None
 
     print("base_run_folder:", base_run_folder)
     run_folders = sorted(list(filter(path.isdir, glob.glob(path.abspath(base_run_folder) + '/*'))))
-    print(run_folders)
 
-    if not invalidate_cache and cache_file_path is not None and path.exists(cache_file_path):
-        print_info("reading run data from cache")
+    if invalidate_cache or not path.exists(cache_file_path):
+        df = pd.DataFrame()
+        parameter_names = set()
+        cached_run_folders = set()
+    else:
+        print_info("updating cache")
         with open(cache_file_path, 'rb') as f:
             cache = pickle.load(f)
         df = cache['df']
         parameter_names = cache['parameter_names']
-    else:
-        df = pd.DataFrame()
-        parameter_names = set()
+        cached_run_folders = set(df['run_folder'])
 
-        # collect results from each run
-        print_info("reading run data")
-        for i, run_folder in enumerate(run_folders):
-            metric_results_folder = path.join(run_folder, "metric_results")
-            benchmark_data_folder = path.join(run_folder, "benchmark_data")
-            run_info_file_path = path.join(run_folder, "run_info.yaml")
+    # collect results from runs not already cached
+    print_info("reading run data")
+    no_output = True
+    for i, run_folder in enumerate(run_folders):
+        metric_results_folder = path.join(run_folder, "metric_results")
+        benchmark_data_folder = path.join(run_folder, "benchmark_data")
+        run_info_file_path = path.join(run_folder, "run_info.yaml")
 
-            if not path.exists(metric_results_folder):
-                print_error("metric_results_folder does not exists [{}]".format(metric_results_folder))
-                continue
-            if not path.exists(run_info_file_path):
-                print_error("run_info file does not exists [{}]".format(run_info_file_path))
-                continue
+        if not path.exists(metric_results_folder):
+            print_error("metric_results_folder does not exists [{}]".format(metric_results_folder))
+            no_output = False
+            continue
+        if not path.exists(run_info_file_path):
+            print_error("run_info file does not exists [{}]".format(run_info_file_path))
+            no_output = False
+            continue
+        if run_folder in cached_run_folders:
+            continue
 
-            run_info = get_yaml(run_info_file_path)
+        run_info = get_yaml(run_info_file_path)
 
-            run_record = dict()
+        run_record = dict()
 
-            for parameter_name, parameter_value in run_info['run_parameters'].items():
-                parameter_names.add(parameter_name)
-                run_record[parameter_name] = parameter_value
+        for parameter_name, parameter_value in run_info['run_parameters'].items():
+            parameter_names.add(parameter_name)
+            if type(parameter_value) == list:
+                parameter_value = tuple(parameter_value)
+            run_record[parameter_name] = parameter_value
 
-            run_record['environment_name'] = path.basename(run_info['environment_folder'])
-            run_record['run_folder'] = path.basename(run_folder)
+        parameter_names.add('environment_name')
+        run_record['environment_name'] = path.basename(run_info['environment_folder'])
+        run_record['run_folder'] = run_folder
+        run_record['failure_rate'] = 0
 
-            run_record['failure_rate'] = 0
-
-            try:
-                run_events = get_csv(path.join(benchmark_data_folder, "run_events.csv"))
-                metrics_dict = get_yaml(path.join(metric_results_folder, "metrics.yaml"))
-            except IOError as e:
-                run_record['failure_rate'] = 1
-                df = df.append(run_record, ignore_index=True)
-                continue
-
-            trajectory_length = metrics_dict['trajectory_length']
-            if trajectory_length < 3.0 or trajectory_length is None:
-                run_record['failure_rate'] = 1
-                df = df.append(run_record, ignore_index=True)
-                continue
-
-            if metrics_dict['absolute_localization_correction_error'] is not None:
-                run_record['mean_absolute_correction_error'] = metrics_dict['absolute_localization_correction_error']['mean']
-
-            if metrics_dict['absolute_localization_error'] is not None:
-                run_record['mean_absolute_error'] = metrics_dict['absolute_localization_error']['mean']
-
-            run_start_events = run_events["event"] == "run_start"
-            run_completed_events = run_events["event"] == "run_completed"
-            if len(run_start_events) == 0 or len(run_completed_events) == 0:
-                run_record['failure_rate'] = 1
-                df = df.append(run_record, ignore_index=True)
-                continue
-
-            run_start_time = float(run_events[run_events["event"] == "run_start"]["timestamp"])
-            supervisor_finish_time = float(run_events[run_events["event"] == "run_completed"]["timestamp"])
-            run_execution_time = supervisor_finish_time - run_start_time
-            run_record['run_execution_time'] = run_execution_time
-            
-            if metrics_dict['cpu_and_memory_usage'] is not None and 'amcl_accumulated_cpu_time' in metrics_dict['cpu_and_memory_usage']:
-                run_record['normalised_cpu_time'] = metrics_dict['cpu_and_memory_usage']['amcl_accumulated_cpu_time'] / run_execution_time
-
-            if metrics_dict['cpu_and_memory_usage'] is not None and 'amcl_uss' in metrics_dict['cpu_and_memory_usage']:
-                run_record['max_memory'] = metrics_dict['cpu_and_memory_usage']['amcl_uss']
-
-            if metrics_dict['cpu_and_memory_usage'] is not None and 'localization_slam_toolbox_node_accumulated_cpu_time' in metrics_dict['cpu_and_memory_usage']:
-                run_record['normalised_cpu_time'] = metrics_dict['cpu_and_memory_usage']['localization_slam_toolbox_node_accumulated_cpu_time'] / run_execution_time
-
-            if metrics_dict['cpu_and_memory_usage'] is not None and 'localization_slam_toolbox_node_uss' in metrics_dict['cpu_and_memory_usage']:
-                run_record['max_memory'] = metrics_dict['cpu_and_memory_usage']['localization_slam_toolbox_node_uss']
-
+        try:
+            run_events = get_csv(path.join(benchmark_data_folder, "run_events.csv"))
+            metrics_dict = get_yaml(path.join(metric_results_folder, "metrics.yaml"))
+        except IOError as e:
+            run_record['failure_rate'] = 1
             df = df.append(run_record, ignore_index=True)
+            continue
 
-            print_info("reading run data: {}%".format((i + 1)*100/len(run_folders)), replace_previous_line=True)
+        trajectory_length = metrics_dict['trajectory_length']
+        if trajectory_length < 3.0 or trajectory_length is None:
+            run_record['failure_rate'] = 1
+            df = df.append(run_record, ignore_index=True)
+            continue
+
+        if metrics_dict['absolute_localization_correction_error'] is not None:
+            run_record['mean_absolute_correction_error'] = metrics_dict['absolute_localization_correction_error']['mean']
+
+        if metrics_dict['absolute_localization_error'] is not None:
+            run_record['mean_absolute_error'] = metrics_dict['absolute_localization_error']['mean']
+
+        run_start_events = run_events["event"] == "run_start"
+        run_completed_events = run_events["event"] == "run_completed"
+        if len(run_start_events) == 0 or len(run_completed_events) == 0:
+            run_record['failure_rate'] = 1
+            df = df.append(run_record, ignore_index=True)
+            continue
+
+        if len(run_events[run_events["event"] == "run_start"]["timestamp"]) == 0:
+            print_error("run_start event does not exists")
+            no_output = False
+            run_record['failure_rate'] = 1
+            df = df.append(run_record, ignore_index=True)
+            continue
+
+        if len(run_events[run_events["event"] == "run_completed"]["timestamp"]) == 0:
+            print_error("run_completed event does not exists")
+            no_output = False
+            run_record['failure_rate'] = 1
+            df = df.append(run_record, ignore_index=True)
+            continue
+
+        run_start_time = float(run_events[run_events["event"] == "run_start"]["timestamp"])
+        supervisor_finish_time = float(run_events[run_events["event"] == "run_completed"]["timestamp"])
+        run_execution_time = supervisor_finish_time - run_start_time
+        run_record['run_execution_time'] = run_execution_time
+
+        if metrics_dict['cpu_and_memory_usage'] is not None and 'amcl_accumulated_cpu_time' in metrics_dict['cpu_and_memory_usage']:
+            run_record['normalised_cpu_time'] = metrics_dict['cpu_and_memory_usage']['amcl_accumulated_cpu_time'] / run_execution_time
+
+        if metrics_dict['cpu_and_memory_usage'] is not None and 'amcl_uss' in metrics_dict['cpu_and_memory_usage']:
+            run_record['max_memory'] = metrics_dict['cpu_and_memory_usage']['amcl_uss']
+
+        if metrics_dict['cpu_and_memory_usage'] is not None and 'localization_slam_toolbox_node_accumulated_cpu_time' in metrics_dict['cpu_and_memory_usage']:
+            run_record['normalised_cpu_time'] = metrics_dict['cpu_and_memory_usage']['localization_slam_toolbox_node_accumulated_cpu_time'] / run_execution_time
+
+        if metrics_dict['cpu_and_memory_usage'] is not None and 'localization_slam_toolbox_node_uss' in metrics_dict['cpu_and_memory_usage']:
+            run_record['max_memory'] = metrics_dict['cpu_and_memory_usage']['localization_slam_toolbox_node_uss']
+
+        df = df.append(run_record, ignore_index=True)
+
+        print_info("reading run data: {}%".format(int((i + 1)*100/len(run_folders))), replace_previous_line=no_output)
+        no_output = True
 
         # save cache
         if cache_file_path is not None:
@@ -148,33 +166,25 @@ def collect_data(base_run_folder_path, cache_file_path=None, invalidate_cache=Tr
             with open(cache_file_path, 'wb') as f:
                 pickle.dump(cache, f)
 
-    metric_names = set(df.columns) - parameter_names
-    
-    pd.options.display.width = 204
-    print("parameter_names", parameter_names)
-    print("metric_names", metric_names)
-    print(df)
+    return df, parameter_names
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description='Execute the analysis of the benchmark results.')
 
     parser.add_argument('-r', dest='base_run_folder',
-                        help='Folder containing the result the runs. Defaults to ~/ds/performance_modelling_output/test_1/',
+                        help='Folder containing the result the runs. Defaults to ~/ds/performance_modelling/output/test_localization/',
                         type=str,
                         default="~/ds/performance_modelling/output/test_localization",
                         required=False)
 
-    parser.add_argument('-c', dest='cache_file',
-                        help='If set the run data is cached and read from CACHE_FILE. CACHE_FILE defaults to ~/ds/performance_modelling_analysis_cache.pkl',
-                        default="~/ds/performance_modelling/output/test_localization_ache.pkl",
-                        required=False)
-
     parser.add_argument('-i', dest='invalidate_cache',
-                        help='If set invalidate the cached run data. If set the run data is re-read and the cache file is updated.',
+                        help='If set, all the data is re-read.',
                         action='store_true',
                         default=False,
                         required=False)
 
     args = parser.parse_args()
-    collect_data(args.base_run_folder, args.cache_file, True)
+    cache_file = path.join(args.base_run_folder, "run_data_cache.pkl")
+    run_data_df, params = collect_data(args.base_run_folder, cache_file, args.invalidate_cache)
+    print(run_data_df.groupby(by=list(params))['run_folder'].count())
