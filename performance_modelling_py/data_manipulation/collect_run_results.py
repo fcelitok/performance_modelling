@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
@@ -11,6 +11,7 @@ import yaml
 import pandas as pd
 from os import path
 
+print("python version:", sys.version_info)
 
 from performance_modelling_py.utils import print_info, print_error
 
@@ -52,8 +53,9 @@ def collect_data(base_run_folder_path, cache_file_path=None, invalidate_cache=Tr
         print_error("base_run_folder does not exists or is not a directory".format(base_run_folder))
         sys.exit(-1)
 
-    run_folders = list(filter(path.isdir, glob.glob(path.abspath(base_run_folder) + '/*')))
     print("base_run_folder:", base_run_folder)
+    run_folders = sorted(list(filter(path.isdir, glob.glob(path.abspath(base_run_folder) + '/*'))))
+    print(run_folders)
 
     if not invalidate_cache and cache_file_path is not None and path.exists(cache_file_path):
         print_info("reading run data from cache")
@@ -83,11 +85,12 @@ def collect_data(base_run_folder_path, cache_file_path=None, invalidate_cache=Tr
 
             run_record = dict()
 
-            print(run_folder)
             for parameter_name, parameter_value in run_info['run_parameters'].items():
-                print(parameter_name, parameter_value)
                 parameter_names.add(parameter_name)
                 run_record[parameter_name] = parameter_value
+
+            run_record['environment_name'] = path.basename(run_info['environment_folder'])
+            run_record['run_folder'] = path.basename(run_folder)
 
             run_record['failure_rate'] = 0
 
@@ -105,7 +108,12 @@ def collect_data(base_run_folder_path, cache_file_path=None, invalidate_cache=Tr
                 df = df.append(run_record, ignore_index=True)
                 continue
 
-            run_record['mean_absolute_correction_error'] = metrics_dict['absolute_localization_correction_error']['mean']
+            if metrics_dict['absolute_localization_correction_error'] is not None:
+                run_record['mean_absolute_correction_error'] = metrics_dict['absolute_localization_correction_error']['mean']
+
+            if metrics_dict['absolute_localization_error'] is not None:
+                run_record['mean_absolute_error'] = metrics_dict['absolute_localization_error']['mean']
+
             run_start_events = run_events["event"] == "run_start"
             run_completed_events = run_events["event"] == "run_completed"
             if len(run_start_events) == 0 or len(run_completed_events) == 0:
@@ -117,9 +125,18 @@ def collect_data(base_run_folder_path, cache_file_path=None, invalidate_cache=Tr
             supervisor_finish_time = float(run_events[run_events["event"] == "run_completed"]["timestamp"])
             run_execution_time = supervisor_finish_time - run_start_time
             run_record['run_execution_time'] = run_execution_time
+            
+            if metrics_dict['cpu_and_memory_usage'] is not None and 'amcl_accumulated_cpu_time' in metrics_dict['cpu_and_memory_usage']:
+                run_record['normalised_cpu_time'] = metrics_dict['cpu_and_memory_usage']['amcl_accumulated_cpu_time'] / run_execution_time
 
-            run_record['normalised_amcl_cpu_time'] = metrics_dict['cpu_and_memory_usage']['amcl_accumulated_cpu_time'] / run_execution_time
-            run_record['amcl_memory'] = metrics_dict['cpu_and_memory_usage']['amcl_uss']
+            if metrics_dict['cpu_and_memory_usage'] is not None and 'amcl_uss' in metrics_dict['cpu_and_memory_usage']:
+                run_record['max_memory'] = metrics_dict['cpu_and_memory_usage']['amcl_uss']
+
+            if metrics_dict['cpu_and_memory_usage'] is not None and 'localization_slam_toolbox_node_accumulated_cpu_time' in metrics_dict['cpu_and_memory_usage']:
+                run_record['normalised_cpu_time'] = metrics_dict['cpu_and_memory_usage']['localization_slam_toolbox_node_accumulated_cpu_time'] / run_execution_time
+
+            if metrics_dict['cpu_and_memory_usage'] is not None and 'localization_slam_toolbox_node_uss' in metrics_dict['cpu_and_memory_usage']:
+                run_record['max_memory'] = metrics_dict['cpu_and_memory_usage']['localization_slam_toolbox_node_uss']
 
             df = df.append(run_record, ignore_index=True)
 
@@ -132,6 +149,8 @@ def collect_data(base_run_folder_path, cache_file_path=None, invalidate_cache=Tr
                 pickle.dump(cache, f)
 
     metric_names = set(df.columns) - parameter_names
+    
+    pd.options.display.width = 204
     print("parameter_names", parameter_names)
     print("metric_names", metric_names)
     print(df)
