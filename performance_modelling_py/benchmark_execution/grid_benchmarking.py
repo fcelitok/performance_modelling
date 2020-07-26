@@ -43,7 +43,7 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
     environment_folders_by_name = dict()
     combinatorial_parameters_dict['environment_name'] = list()
     for environment_folder in environment_folders:
-        environment_name = path.basename(environment_folder)
+        environment_name = path.basename(path.abspath(environment_folder))
         environment_folders_by_name[environment_name] = environment_folder
         combinatorial_parameters_dict['environment_name'].append(environment_name)
 
