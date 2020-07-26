@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import glob
 import os
+import pickle
 import traceback
 from os import path
 import time
@@ -179,6 +180,8 @@ class GroundTruthMap:
 
         self.initial_position = map_info['initial_pose']
 
+        self._complete_free_voronoi_graph_file_path = path.join(path.dirname(map_info_path), "complete_free_voronoi_graph_cache.pkl")
+
         self._occupancy_map = None
         self._complete_free_voronoi_graph = None
 
@@ -280,63 +283,78 @@ class GroundTruthMap:
 
         return occupied_bitmap, north_bitmap, south_bitmap, west_bitmap, east_bitmap
 
+    def _compute_complete_free_voronoi_graph(self):
+        occupied_bitmap, north_bitmap, south_bitmap, west_bitmap, east_bitmap = self.edge_bitmaps(lambda pixel: pixel != self.free_rgb)
+
+        wall_points_set = set()
+        w, h = north_bitmap.shape
+        for x in range(w):
+            for y in range(h):
+                if north_bitmap[x, y] or south_bitmap[x, y]:
+                    wall_points_set.add((x, y))
+                    wall_points_set.add((x + 1, y))
+                if west_bitmap[x, y] or east_bitmap[x, y]:
+                    wall_points_set.add((x, y))
+                    wall_points_set.add((x, y + 1))
+
+        wall_points = np.array(tuple(wall_points_set))
+        delaunay_graph = Delaunay(wall_points)
+
+        vertices_meters_list = list()
+        vertices_pixels_list = list()
+        radii_meters_list = list()
+        for vertex_indices in delaunay_graph.simplices:
+            p1_p, p2_p, p3_p = wall_points[vertex_indices, :]
+            center_p, _ = circle_given_points(p1_p, p2_p, p3_p)
+            vertices_pixels_list.append(center_p)
+
+            p1_m, p2_m, p3_m = self.image_y_up_to_map_frame_coordinates(wall_points[vertex_indices, :])
+            center_m, radius_m = circle_given_points(p1_m, p2_m, p3_m)
+            vertices_meters_list.append(center_m)
+            radii_meters_list.append(radius_m)
+
+        voronoi_vertices_meters = np.array(vertices_meters_list)
+        voronoi_vertices_int_pixels = np.array(vertices_pixels_list, dtype=int)
+        voronoi_vertices_occupancy_bitmap = occupied_bitmap[voronoi_vertices_int_pixels[:, 0], voronoi_vertices_int_pixels[:, 1]]
+
+        free_indices_set = set(list(np.where(1 - voronoi_vertices_occupancy_bitmap)[0]))
+
+        complete_free_voronoi_graph = nx.Graph()
+        for triangle_index, (n1, n2, n3) in enumerate(delaunay_graph.neighbors):
+            if triangle_index in free_indices_set:
+                complete_free_voronoi_graph.add_node(
+                    triangle_index,
+                    vertex=voronoi_vertices_meters[triangle_index, :],
+                    radius=radii_meters_list[triangle_index])
+
+                if n1 < triangle_index and n1 != -1 and n1 in free_indices_set:
+                    complete_free_voronoi_graph.add_edge(triangle_index, int(n1))
+                if n2 < triangle_index and n2 != -1 and n2 in free_indices_set:
+                    complete_free_voronoi_graph.add_edge(triangle_index, int(n2))
+                if n3 < triangle_index and n3 != -1 and n3 in free_indices_set:
+                    complete_free_voronoi_graph.add_edge(triangle_index, int(n3))
+
+        for n1, n2 in list(complete_free_voronoi_graph.edges):
+            p1 = complete_free_voronoi_graph.nodes[n1]['vertex']
+            p2 = complete_free_voronoi_graph.nodes[n2]['vertex']
+            complete_free_voronoi_graph.edges[n1, n2]['voronoi_path_distance'] = np.sqrt(np.sum((p2 - p1) ** 2))
+
+        return complete_free_voronoi_graph
+
     @property
     def voronoi_graph(self):
+        # if the graph has not been already computed in this object, we need to load it from file or compute it
         if self._complete_free_voronoi_graph is None:
-            occupied_bitmap, north_bitmap, south_bitmap, west_bitmap, east_bitmap = self.edge_bitmaps(lambda pixel: pixel != self.free_rgb)
 
-            wall_points_set = set()
-            w, h = north_bitmap.shape
-            for x in range(w):
-                for y in range(h):
-                    if north_bitmap[x, y] or south_bitmap[x, y]:
-                        wall_points_set.add((x, y))
-                        wall_points_set.add((x + 1, y))
-                    if west_bitmap[x, y] or east_bitmap[x, y]:
-                        wall_points_set.add((x, y))
-                        wall_points_set.add((x, y + 1))
-
-            wall_points = np.array(tuple(wall_points_set))
-            delaunay_graph = Delaunay(wall_points)
-
-            vertices_meters_list = list()
-            vertices_pixels_list = list()
-            radii_meters_list = list()
-            for vertex_indices in delaunay_graph.simplices:
-                p1_p, p2_p, p3_p = wall_points[vertex_indices, :]
-                center_p, _ = circle_given_points(p1_p, p2_p, p3_p)
-                vertices_pixels_list.append(center_p)
-
-                p1_m, p2_m, p3_m = self.image_y_up_to_map_frame_coordinates(wall_points[vertex_indices, :])
-                center_m, radius_m = circle_given_points(p1_m, p2_m, p3_m)
-                vertices_meters_list.append(center_m)
-                radii_meters_list.append(radius_m)
-
-            voronoi_vertices_meters = np.array(vertices_meters_list)
-            voronoi_vertices_int_pixels = np.array(vertices_pixels_list, dtype=int)
-            voronoi_vertices_occupancy_bitmap = occupied_bitmap[voronoi_vertices_int_pixels[:, 0], voronoi_vertices_int_pixels[:, 1]]
-
-            free_indices_set = set(list(np.where(1 - voronoi_vertices_occupancy_bitmap)[0]))
-
-            self._complete_free_voronoi_graph = nx.Graph()
-            for triangle_index, (n1, n2, n3) in enumerate(delaunay_graph.neighbors):
-                if triangle_index in free_indices_set:
-                    self._complete_free_voronoi_graph.add_node(
-                        triangle_index,
-                        vertex=voronoi_vertices_meters[triangle_index, :],
-                        radius=radii_meters_list[triangle_index])
-
-                    if n1 < triangle_index and n1 != -1 and n1 in free_indices_set:
-                        self._complete_free_voronoi_graph.add_edge(triangle_index, int(n1))
-                    if n2 < triangle_index and n2 != -1 and n2 in free_indices_set:
-                        self._complete_free_voronoi_graph.add_edge(triangle_index, int(n2))
-                    if n3 < triangle_index and n3 != -1 and n3 in free_indices_set:
-                        self._complete_free_voronoi_graph.add_edge(triangle_index, int(n3))
-
-            for n1, n2 in list(self._complete_free_voronoi_graph.edges):
-                p1 = self._complete_free_voronoi_graph.nodes[n1]['vertex']
-                p2 = self._complete_free_voronoi_graph.nodes[n2]['vertex']
-                self._complete_free_voronoi_graph.edges[n1, n2]['voronoi_path_distance'] = np.sqrt(np.sum((p2 - p1)**2))
+            # if the cache file exists, we load the graph from file
+            if path.exists(self._complete_free_voronoi_graph_file_path):
+                with open(self._complete_free_voronoi_graph_file_path, 'rb') as complete_free_voronoi_graph_file:
+                    self._complete_free_voronoi_graph = pickle.load(complete_free_voronoi_graph_file)
+            # otherwise we compute it and save it to file
+            else:
+                self._complete_free_voronoi_graph = self._compute_complete_free_voronoi_graph()
+                with open(self._complete_free_voronoi_graph_file_path, 'wb') as complete_free_voronoi_graph_file:
+                    pickle.dump(self._complete_free_voronoi_graph, complete_free_voronoi_graph_file, protocol=2)
 
         return self._complete_free_voronoi_graph
 
@@ -416,6 +434,97 @@ class GroundTruthMap:
             # plot chain vertices
             if len(list(graph.neighbors(node_index))) == 3:
                 ax.scatter(x_1, y_1, color='blue', s=4.0, marker='o')
+
+            # plot segments
+            for neighbor_index in graph.neighbors(node_index):
+                if neighbor_index < node_index:
+                    radius_2 = graph.nodes[neighbor_index]['radius']
+                    if radius_2 > min_radius:
+                        x_2, y_2 = graph.nodes[neighbor_index]['vertex']
+                        ax.plot((x_1, x_2), (y_1, y_2), color='black', linewidth=1.0)
+
+            # plot circles
+            ax.add_artist(plt.Circle(node_data['vertex'], radius_1, color='grey', fill=False, linewidth=0.2))
+
+            if time.time() - start_time > timeout:
+                print("timeout")
+                break
+
+        # plot vertical and horizontal wall points
+        _, north_bitmap, south_bitmap, west_bitmap, east_bitmap = self.edge_bitmaps(lambda pixel: pixel != self.free_rgb)
+        h_wall_points_pixels_set = set()
+        v_wall_points_pixels_set = set()
+
+        w, h = north_bitmap.shape
+        for x in range(w):
+            for y in range(h):
+                if north_bitmap[x, y] or south_bitmap[x, y]:
+                    h_wall_points_pixels_set.add((x, y))
+                    h_wall_points_pixels_set.add((x + 1, y))
+                if west_bitmap[x, y] or east_bitmap[x, y]:
+                    v_wall_points_pixels_set.add((x, y))
+                    v_wall_points_pixels_set.add((x, y + 1))
+
+        h_wall_points_meters = self.image_y_up_to_map_frame_coordinates(np.array(list(h_wall_points_pixels_set)))
+        v_wall_points_meters = self.image_y_up_to_map_frame_coordinates(np.array(list(v_wall_points_pixels_set)))
+
+        ax.scatter(h_wall_points_meters[:, 0], h_wall_points_meters[:, 1], s=15.0, marker='_')
+        ax.scatter(v_wall_points_meters[:, 0], v_wall_points_meters[:, 1], s=15.0, marker='|')
+
+        fig.savefig(plot_file_path)
+        plt.close(fig)
+
+    def save_voronoi_plot_and_trajectory(self, plot_file_path, segments, graph=None, do_not_recompute=False, timeout=120, max_nodes=2000, min_radius=None):
+        plot_file_path = path.expanduser(plot_file_path)
+        if path.exists(plot_file_path) and do_not_recompute:
+            print_info("do_not_recompute: will not recompute the voronoi plot {}".format(plot_file_path))
+            return
+
+        if not path.exists(path.dirname(plot_file_path)):
+            os.makedirs(path.dirname(plot_file_path))
+
+        if min_radius is None:
+            min_radius = 4 * self.resolution
+
+        if graph is None:
+            graph = self.voronoi_graph.subgraph(filter(
+                lambda n: self.voronoi_graph.nodes[n]['radius'] >= min_radius,
+                self.voronoi_graph.nodes
+            ))
+
+        fig, ax = plt.subplots()
+        fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
+
+        start_time = time.time()
+        print("plotting. nodes: {}/{}".format(min(max_nodes, graph.number_of_nodes()), graph.number_of_nodes()))
+
+        for (x_1, y_1), (x_2, y_2) in segments:
+            ax.plot((x_1, x_2), (y_1, y_2), color='blue', linewidth=1.5)
+
+        num_nodes = 0
+        nth = max(1, graph.number_of_nodes() // max_nodes)
+        for node_index, node_data in graph.nodes.data():
+            num_nodes += 1
+            if num_nodes % nth:
+                continue
+
+            x_1, y_1 = node_data['vertex']
+            radius_1 = node_data['radius']
+
+            if radius_1 < min_radius:
+                continue
+
+            # plot leaf vertices
+            if len(list(graph.neighbors(node_index))) == 1:
+                ax.scatter(x_1, y_1, color='red', s=4.0, marker='o')
+
+            # plot chain vertices
+            if len(list(graph.neighbors(node_index))) == 3:
+                ax.scatter(x_1, y_1, color='blue', s=4.0, marker='o')
+
+            # plot other vertices
+            if len(list(graph.neighbors(node_index))) == 2:
+                ax.scatter(x_1, y_1, color='grey', s=2.0, marker='o')
 
             # plot segments
             for neighbor_index in graph.neighbors(node_index):
