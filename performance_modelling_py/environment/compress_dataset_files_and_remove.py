@@ -16,6 +16,7 @@ dataset_files = glob.glob(dataset_path + '/**/*.dae', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.png', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.svg', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.posegraph', recursive=True) + \
+                glob.glob(dataset_path + '/**/*.pkl', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.data', recursive=True)
 
 for file_path in dataset_files:
@@ -27,7 +28,6 @@ for file_path in dataset_files:
     print("executing {cmd} in {file_dir}".format(cmd=' '.join(cmd), file_dir=file_dir))
     retcode = subprocess.call(cmd, cwd=file_dir)
     if retcode == 0:
-        # print('cmd=', ['rm', file_name], 'cwd=', file_dir)
         print("executing rm {file_name} in {file_dir}".format(file_name=file_name, file_dir=file_dir))
         subprocess.call(['rm', file_name], cwd=file_dir)
     else:
