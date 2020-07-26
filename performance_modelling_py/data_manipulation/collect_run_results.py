@@ -103,6 +103,7 @@ def collect_data(base_run_folder_path, invalidate_cache=False):
             continue
 
         trajectory_length = metrics_dict['trajectory_length']
+        run_record['trajectory_length'] = trajectory_length
         if trajectory_length < 3.0 or trajectory_length is None:
             run_record['failure_rate'] = 1
             df = df.append(run_record, ignore_index=True)
