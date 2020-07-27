@@ -71,7 +71,7 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
                 with open(run_info_file_path) as run_info_file:
                     run_info = yaml.safe_load(run_info_file)
                     params_dict = run_info['run_parameters']
-                    params_dict['environment_name'] = path.basename(run_info['environment_folder'])
+                    params_dict['environment_name'] = path.basename(path.abspath(run_info['environment_folder']))
                     for param_name, param_value in params_dict.items():
                         params_dict[param_name] = tuple(param_value) if type(param_value) == list else param_value  # convert any list into a tuple to allow hashing
                     params_hashable_dict = hashable_dict(params_dict)
