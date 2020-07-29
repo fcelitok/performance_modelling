@@ -100,7 +100,12 @@ def black_white_to_ground_truth_map(input_map_path, map_info_path, occupied_thre
 
     resolution = float(map_info['resolution'])  # meter/pixel
     map_frame_meters = -map_offset_meters
-    initial_position_meters = np.array(map_info['initial_pose'], dtype=float)
+
+    if 'initial_pose' in map_info:
+        initial_position_list = map_info['initial_pose']
+    else:
+        initial_position_list = [0.0, 0.0]
+    initial_position_meters = np.array(initial_position_list, dtype=float)
 
     w, h = trimmed_image.size
     i_x, i_y = initial_position_pixels = list(map(int, np.array([0, h]) + np.array([1, -1]) * (map_frame_meters + initial_position_meters) / resolution))
@@ -178,7 +183,10 @@ class GroundTruthMap:
         self.map_size_meters = self.map_size_pixels * self.resolution
         self.map_frame_meters = -self.map_offset_meters
 
-        self.initial_position = map_info['initial_pose']
+        if 'initial_pose' in map_info:
+            self.initial_position = map_info['initial_pose']
+        else:
+            self.initial_position = [0.0, 0.0]
 
         self._complete_free_voronoi_graph_file_path = path.join(path.dirname(map_info_path), "complete_free_voronoi_graph_cache.pkl")
 
