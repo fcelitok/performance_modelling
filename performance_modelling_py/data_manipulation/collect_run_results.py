@@ -90,7 +90,7 @@ def collect_data(base_run_folder_path, invalidate_cache=False):
             run_record[parameter_name] = parameter_value
 
         parameter_names.add('environment_name')
-        run_record['environment_name'] = path.basename(run_info['environment_folder'])
+        run_record['environment_name'] = path.basename(path.abspath(run_info['environment_folder']))
         run_record['run_folder'] = run_folder
         run_record['failure_rate'] = 0
 
@@ -102,18 +102,22 @@ def collect_data(base_run_folder_path, invalidate_cache=False):
             df = df.append(run_record, ignore_index=True)
             continue
 
-        trajectory_length = metrics_dict['trajectory_length']
+        trajectory_length = metrics_dict['trajectory_length'] if 'trajectory_length' in metrics_dict else None
         run_record['trajectory_length'] = trajectory_length
         if trajectory_length < 3.0 or trajectory_length is None:
             run_record['failure_rate'] = 1
             df = df.append(run_record, ignore_index=True)
             continue
 
-        if metrics_dict['absolute_localization_correction_error'] is not None:
+        if 'absolute_localization_correction_error' in metrics_dict and metrics_dict['absolute_localization_correction_error'] is not None:
             run_record['mean_absolute_correction_error'] = metrics_dict['absolute_localization_correction_error']['mean']
 
-        if metrics_dict['absolute_localization_error'] is not None:
+        if 'absolute_localization_error' in metrics_dict and metrics_dict['absolute_localization_error'] is not None:
             run_record['mean_absolute_error'] = metrics_dict['absolute_localization_error']['mean']
+
+        run_record['num_target_pose_set'] = len(run_events[run_events["event"] == "target_pose_set"])
+        run_record['num_target_pose_reached'] = len(run_events[run_events["event"] == "target_pose_reached"])
+        run_record['num_target_pose_not_reached'] = len(run_events[run_events["event"] == "target_pose_not_reached"])
 
         run_start_events = run_events["event"] == "run_start"
         run_completed_events = run_events["event"] == "run_completed"
