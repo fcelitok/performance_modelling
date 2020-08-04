@@ -14,7 +14,7 @@ import os
 import yaml
 from os import path
 
-from performance_modelling_py.environment.ground_truth_map import cm_to_body_parts
+from performance_modelling_py.environment.ground_truth_map import cm_to_body_parts, GroundTruthMap
 from scipy.stats import t
 import scipy.spatial
 import subprocess
@@ -628,3 +628,151 @@ def trajectory_length_metric(ground_truth_poses_file_path):
     trajectory_length = euclidean_distance_of_deltas.sum()
 
     return float(trajectory_length)
+
+
+def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_truth_poses_file_path, ground_truth_map, samples_per_second=1.0):
+
+    start_time = time.time()
+    estimated_poses_df = pd.read_csv(estimated_poses_file_path)
+    if len(estimated_poses_df.index) < 2:
+        print_error("not enough estimated poses data points")
+        return
+    print_info("estimated_poses_df", time.time() - start_time)
+
+    start_time = time.time()
+    ground_truth_poses_df = pd.read_csv(ground_truth_poses_file_path)
+    print_info("ground_truth_poses_df", time.time() - start_time)
+
+    start_time = time.time()
+    ground_truth_interpolated_poses_file_path = path.splitext(estimated_poses_file_path)[0] + "ground_truth_interpolated.csv"
+    if path.exists(ground_truth_interpolated_poses_file_path):
+        complete_trajectory_df = pd.read_csv(ground_truth_interpolated_poses_file_path)
+    else:
+        complete_trajectory_df = compute_ground_truth_interpolated_poses(estimated_poses_df, ground_truth_poses_df)
+        complete_trajectory_df.to_csv(ground_truth_interpolated_poses_file_path)
+
+    run_duration = ground_truth_poses_df.iloc[-1]['t'] - ground_truth_poses_df.iloc[0]['t']
+    resample_n = int(run_duration*samples_per_second)
+    resample_ratio = max(1, len(complete_trajectory_df) // resample_n)
+    trajectory_df = complete_trajectory_df.iloc[::resample_ratio].copy(deep=False)
+    trajectory_df['abs_err'] = np.sqrt((trajectory_df['x_est'] - trajectory_df['x_gt'])**2 + (trajectory_df['y_est'] - trajectory_df['y_gt'])**2)
+    print_info("trajectory_df", time.time() - start_time)
+
+    from icp import icp
+    horizon_length = 1.
+
+    map_image_array = np.array(ground_truth_map.map_image.convert(mode="L")).transpose()
+    points_map_frame = ground_truth_map.image_to_map_frame_coordinates(np.array(np.where(map_image_array == 0)).transpose())
+
+    # trajectory_and_geometric_similarity_df = trajectory_df[['x_gt', 'y_gt']].copy(deep=False)
+    score_0_column = list()
+    score_aligned_column = list()
+    plot_lines = list()
+
+    for i, row_df in trajectory_df[['x_gt', 'y_gt']].iterrows():
+        x = np.array(row_df)
+        points_x = points_map_frame - x
+        distances_x = np.sqrt(np.sum(points_x ** 2, axis=1))
+        horizon_points_x = points_x[distances_x < horizon_length]
+
+        delta_trans_list = 0.2 * np.array([
+            (1, 0),
+            (0, 1),
+            (-1, 0),
+            (0, -1),
+            (.7, .7),
+            (.7, -.7),
+            (-.7, .7),
+            (-.7, -.7),
+        ])
+
+        if len(horizon_points_x) == 0:
+            score_0_column.append(np.nan)
+            score_aligned_column.append(np.nan)
+            continue
+
+        score_0_list = list()
+        score_aligned_list = list()
+        for delta_trans in delta_trans_list:
+            delta_theta = 0.0
+            x_prime = x + delta_trans
+
+            points_x_prime = points_map_frame - x_prime
+            distances_x_prime = np.sqrt(np.sum(points_x_prime ** 2, axis=1))
+            horizon_points_x_prime = points_x_prime[distances_x_prime < horizon_length]
+            if len(horizon_points_x_prime) == 0:
+                continue
+
+            rot_mat = np.array([
+                [np.cos(delta_theta), np.sin(delta_theta)],
+                [-np.sin(delta_theta), np.cos(delta_theta)]
+            ])
+
+            horizon_points_x_prime = np.dot(horizon_points_x_prime, rot_mat)
+
+            tran, scores = icp(horizon_points_x_prime, horizon_points_x)
+            score_0_list.append(scores[0])
+            score_aligned_list.append(scores[-1])
+
+            plot_lines.append((x, x_prime, scores[0]))
+
+        if len(score_0_list) == 0:
+            score_0_column.append(np.nan)
+            score_aligned_column.append(np.nan)
+        else:
+            score_0_column.append(np.mean(score_0_list))
+            score_aligned_column.append(np.mean(score_aligned_list))
+
+    trajectory_df['score_0'] = score_0_column
+    trajectory_df['score_aligned'] = score_aligned_column
+    print(trajectory_df)
+
+    # n_x_prime = horizon_points_x_prime.shape[0]
+    # horizon_points_x_prime_hom = np.hstack((horizon_points_x_prime, np.ones((n_x_prime, 1))))
+    # aligned_horizon_points_x_prime = np.dot(horizon_points_x_prime_hom, tran.T)
+
+    print(plot_lines)
+
+    import matplotlib.pyplot as plt
+    for (x_0, y_0), (x_1, y_1), score in plot_lines:
+        plt.plot([x_0, x_1], [y_0, y_1], linewidth=0.003/(score+0.001), color='black')
+
+    # plt.scatter(trajectory_df['x_gt'], trajectory_df['y_gt'], s=(100*trajectory_df['score_0'])**1)
+    # plt.scatter(*aligned_horizon_points_x_prime[:, 0:2].transpose(), color='blue')
+    # plt.scatter(*horizon_points_x[:, 0:2].transpose(), color='red', marker='x')
+    plt.show()
+
+
+def test_metrics(run_output_folder):
+
+    run_info_path = path.join(run_output_folder, "run_info.yaml")
+    if not path.exists(run_info_path) or not path.isfile(run_info_path):
+        print_error("run info file does not exists")
+
+    with open(run_info_path) as run_info_file:
+        run_info = yaml.safe_load(run_info_file)
+
+    environment_folder = run_info['environment_folder']
+    ground_truth_map_info_path = path.join(environment_folder, "data", "map.yaml")
+    ground_truth_map = GroundTruthMap(ground_truth_map_info_path)
+
+    # localization metrics
+    estimated_poses_path = path.join(run_output_folder, "benchmark_data", "estimated_poses.csv")
+    ground_truth_poses_path = path.join(run_output_folder, "benchmark_data", "ground_truth_poses.csv")
+
+    absolute_error_vs_geometric_similarity(estimated_poses_path, ground_truth_poses_path, ground_truth_map)
+
+
+if __name__ == '__main__':
+    # run_folders = list(filter(path.isdir, glob.glob(path.expanduser("~/ds/elysium/performance_modelling/output/localization/*"))))
+    # for progress, run_folder in enumerate(run_folders):
+    #     print_info("main: compute_metrics {}% {}".format((progress + 1)*100/len(run_folders), run_folder))
+    #     test_metrics(path.expanduser(run_folder))
+
+    run_folders = list(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/output/test_localization/run_000000000/"))))
+    # run_folders = list(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/output/test_slam/run_000000000/"))))
+    # run_folders = list(filter(path.isdir, glob.glob(path.expanduser("~/ds/elysium/performance_modelling/output/localization/*"))))
+    # run_folders = list(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/output/test_localization/*"))))
+    last_run_folder = sorted(run_folders, key=lambda x: path.getmtime(x))[-1]
+    print("last run folder:", last_run_folder)
+    test_metrics(last_run_folder)

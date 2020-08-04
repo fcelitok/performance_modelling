@@ -101,7 +101,7 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
     print_info("total number of runs:             {}".format(num_runs * num_combinations))
     print_info("remaining number of runs:         {}".format(num_runs_remaining))
 
-    for parameters_combination_dict in remaining_params_combinations:
+    for n_executed_runs, parameters_combination_dict in enumerate(remaining_params_combinations):
         environment_folder = environment_folders_by_name[parameters_combination_dict['environment_name']]
 
         # find an available run folder path
@@ -111,7 +111,7 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
             i += 1
             run_folder = path.join(base_run_folder, "run_{run_number:09d}".format(run_number=i))
 
-        print_info("\n\n\nbenchmark: starting run {run_index}".format(run_index=i))
+        print_info("\n\n\nbenchmark: starting run {run_index} ({remaining_runs} remaining)".format(run_index=i, remaining_runs=len(remaining_params_combinations) - n_executed_runs))
         print_info("\tenvironment_folder:", environment_folder)
         print_info("\tparameters_combination_dict:")
         for k, v in parameters_combination_dict.items():
