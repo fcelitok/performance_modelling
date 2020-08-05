@@ -631,6 +631,9 @@ def trajectory_length_metric(ground_truth_poses_file_path):
 
 
 def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_truth_poses_file_path, ground_truth_map, samples_per_second=1.0):
+    import matplotlib.pyplot as plt
+    from icp import iterative_closest_point
+    from skimage.draw import line, circle_perimeter
 
     start_time = time.time()
     estimated_poses_df = pd.read_csv(estimated_poses_file_path)
@@ -658,24 +661,40 @@ def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_tru
     trajectory_df['abs_err'] = np.sqrt((trajectory_df['x_est'] - trajectory_df['x_gt'])**2 + (trajectory_df['y_est'] - trajectory_df['y_gt'])**2)
     print_info("trajectory_df", time.time() - start_time)
 
-    from icp import icp
-    horizon_length = 1.
+    horizon_length = 3.5
+    delta_length = 0.2
+    ic = ground_truth_map.map_frame_to_image_coordinates
+    mf = ground_truth_map.image_to_map_frame_coordinates
 
     map_image_array = np.array(ground_truth_map.map_image.convert(mode="L")).transpose()
     points_map_frame = ground_truth_map.image_to_map_frame_coordinates(np.array(np.where(map_image_array == 0)).transpose())
+    occupancy_grid = map_image_array == 0
 
-    # trajectory_and_geometric_similarity_df = trajectory_df[['x_gt', 'y_gt']].copy(deep=False)
     score_0_column = list()
     score_aligned_column = list()
     plot_lines = list()
+    icp_time = 0
+    ray_tracing_time = 0
 
     for i, row_df in trajectory_df[['x_gt', 'y_gt']].iterrows():
-        x = np.array(row_df)
-        points_x = points_map_frame - x
-        distances_x = np.sqrt(np.sum(points_x ** 2, axis=1))
-        horizon_points_x = points_x[distances_x < horizon_length]
+        x_mf = np.array(row_df)
+        p_x, p_y = ic(x_mf)
 
-        delta_trans_list = 0.2 * np.array([
+        ray_tracing_start_time = time.time()
+        visible_points_x = set()
+        perimeter_points = np.array(circle_perimeter(p_x, p_y, int((horizon_length + delta_length)/ground_truth_map.resolution), method='andres')).transpose()
+        for perimeter_x, perimeter_y in perimeter_points:
+
+            ray_points = np.array(line(p_x, p_y, perimeter_x, perimeter_y)).transpose()
+            for ray_x, ray_y in ray_points:
+                if occupancy_grid[ray_x, ray_y]:
+                    visible_points_x.add((ray_x, ray_y))
+                    break
+
+        visible_points_x_mf = np.array(list(map(mf, visible_points_x)))
+        ray_tracing_time += time.time() - ray_tracing_start_time
+
+        delta_trans_list = delta_length * np.array([
             (1, 0),
             (0, 1),
             (-1, 0),
@@ -686,7 +705,7 @@ def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_tru
             (-.7, -.7),
         ])
 
-        if len(horizon_points_x) == 0:
+        if len(visible_points_x_mf) == 0:
             score_0_column.append(np.nan)
             score_aligned_column.append(np.nan)
             continue
@@ -694,27 +713,71 @@ def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_tru
         score_0_list = list()
         score_aligned_list = list()
         for delta_trans in delta_trans_list:
-            delta_theta = 0.0
-            x_prime = x + delta_trans
+            x_prime_mf = x_mf + delta_trans
+            p_x_prime, p_y_prime = ic(x_prime_mf)
+            # points_x_prime_mf = points_map_frame - x_prime_mf
+            # distances_x_prime_mf = np.sqrt(np.sum(points_x_prime_mf ** 2, axis=1))
+            # horizon_points_x_prime_mf = points_x_prime_mf[distances_x_prime_mf < horizon_length]
 
-            points_x_prime = points_map_frame - x_prime
-            distances_x_prime = np.sqrt(np.sum(points_x_prime ** 2, axis=1))
-            horizon_points_x_prime = points_x_prime[distances_x_prime < horizon_length]
-            if len(horizon_points_x_prime) == 0:
+            ray_tracing_start_time = time.time()
+            visible_points_x_prime = set()
+            perimeter_points_prime = np.array(circle_perimeter(p_x_prime, p_y_prime, int(horizon_length / ground_truth_map.resolution), method='andres')).transpose()
+            for perimeter_x_prime, perimeter_y_prime in perimeter_points_prime:
+
+                ray_points_prime = np.array(line(p_x_prime, p_y_prime, perimeter_x_prime, perimeter_y_prime)).transpose()
+                for ray_x_prime, ray_y_prime in ray_points_prime:
+                    if occupancy_grid[ray_x_prime, ray_y_prime]:
+                        visible_points_x_prime.add((ray_x_prime, ray_y_prime))
+                        break
+
+            visible_points_x_prime_mf = np.array(list(map(mf, visible_points_x_prime)))
+            ray_tracing_time += time.time() - ray_tracing_start_time
+
+            if len(visible_points_x_prime_mf) == 0:
                 continue
 
-            rot_mat = np.array([
-                [np.cos(delta_theta), np.sin(delta_theta)],
-                [-np.sin(delta_theta), np.cos(delta_theta)]
-            ])
+            visible_points_x_mf_o = visible_points_x_prime_mf - x_mf
+            visible_points_x_prime_mf_o = visible_points_x_prime_mf - x_prime_mf
 
-            horizon_points_x_prime = np.dot(horizon_points_x_prime, rot_mat)
+            # translate origin if using rotation again
+            # delta_theta = 0.0
+            # rot_mat = np.array([
+            #     [np.cos(delta_theta), np.sin(delta_theta)],
+            #     [-np.sin(delta_theta), np.cos(delta_theta)]
+            # ])
+            # horizon_points_x_prime_mf_o = np.dot(horizon_points_x_prime_mf_o, rot_mat)
 
-            tran, scores = icp(horizon_points_x_prime, horizon_points_x)
+            start_time = time.time()
+            max_iterations = 20
+            transform, scores, transformed_points_prime, num_iterations = iterative_closest_point(visible_points_x_prime_mf_o, visible_points_x_mf_o, max_iterations=max_iterations, tolerance=0.0001)
+            if num_iterations == max_iterations:
+                print_info("max_iterations!")
+
             score_0_list.append(scores[0])
-            score_aligned_list.append(scores[-1])
 
-            plot_lines.append((x, x_prime, scores[0]))
+            translation = transform[:2, 2]
+            translation_score = float(np.sqrt(np.sum((translation - delta_trans) ** 2)) / np.sqrt(np.sum(delta_trans ** 2)))
+
+            # print("tran: {}, {} \t  tran-delta: {}, {}".format(
+            #     translation[0], translation[1],
+            #     (translation - delta_trans)[0], (translation - delta_trans)[1]
+            # ))
+            print("score: {s:1.4f} \t score_0: {s0:1.4f} \t i: {i}".format(s=translation_score, s0=scores[0], i=num_iterations))
+
+            score_aligned_list.append(translation_score)
+            icp_time += time.time() - start_time
+
+            # if translation_score > 0.5:
+            #     plt.scatter(*visible_points_x_mf_o.transpose(), color='black', marker='x')
+            #     plt.scatter(*visible_points_x_prime_mf_o.transpose(), color='red', marker='x')
+            #     plt.scatter(*transformed_points_prime.transpose(), color='blue', marker='x')
+            #     l = horizon_length + delta_length
+            #     plt.xlim(-l, l)
+            #     plt.ylim(-l, l)
+            #     plt.gca().set_aspect('equal', adjustable='box')
+            #     plt.show()
+
+            plot_lines.append((x_mf, x_prime_mf, translation_score))
 
         if len(score_0_list) == 0:
             score_0_column.append(np.nan)
@@ -725,22 +788,23 @@ def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_tru
 
     trajectory_df['score_0'] = score_0_column
     trajectory_df['score_aligned'] = score_aligned_column
+
     print(trajectory_df)
+    print("trajectory_df[trajectory_df.score_aligned > 0.5]")
+    print(trajectory_df[trajectory_df.score_aligned > 0.5])
 
-    # n_x_prime = horizon_points_x_prime.shape[0]
-    # horizon_points_x_prime_hom = np.hstack((horizon_points_x_prime, np.ones((n_x_prime, 1))))
-    # aligned_horizon_points_x_prime = np.dot(horizon_points_x_prime_hom, tran.T)
+    print_info("icp_time", icp_time)
+    print_info("ray_tracing_time", ray_tracing_time)
 
-    print(plot_lines)
-
-    import matplotlib.pyplot as plt
     for (x_0, y_0), (x_1, y_1), score in plot_lines:
-        plt.plot([x_0, x_1], [y_0, y_1], linewidth=0.003/(score+0.001), color='black')
-
-    # plt.scatter(trajectory_df['x_gt'], trajectory_df['y_gt'], s=(100*trajectory_df['score_0'])**1)
-    # plt.scatter(*aligned_horizon_points_x_prime[:, 0:2].transpose(), color='blue')
-    # plt.scatter(*horizon_points_x[:, 0:2].transpose(), color='red', marker='x')
+        plt.plot([x_0, x_1], [y_0, y_1], linewidth=3*score, color='black')
+    plt.plot([trajectory_df['x_gt'], trajectory_df['x_est']], [trajectory_df['y_gt'], trajectory_df['y_est']], color='red')
     plt.show()
+
+    # plt.plot(trajectory_df['t'], trajectory_df['abs_err'], label='abs_err')
+    # plt.plot(trajectory_df['t'], trajectory_df['score_0'], label='score_0')
+    # plt.legend()
+    # plt.show()
 
 
 def test_metrics(run_output_folder):

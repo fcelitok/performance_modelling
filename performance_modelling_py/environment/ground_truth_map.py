@@ -208,10 +208,9 @@ class GroundTruthMap:
                         self._occupancy_map[x, y] = self.FREE
         return self._occupancy_map
 
-    def map_frame_to_image_coordinates(self, x_meters, y_meters):
+    def map_frame_to_image_coordinates(self, xy_meters):
         _, h = self.map_image.size
-        p_meters = np.array([x_meters, y_meters])
-        return list(map(int, np.array([0, h]) + np.array([1, -1]) * (self.map_frame_meters + p_meters) / self.resolution))
+        return list(map(int, np.array([0, h]) + np.array([1, -1]) * (self.map_frame_meters + xy_meters) / self.resolution))
 
     def image_to_map_frame_coordinates(self, xy_pixels):
         _, h = self.map_image.size
