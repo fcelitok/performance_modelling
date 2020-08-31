@@ -695,6 +695,13 @@ def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_tru
                     break
 
         visible_points_x_mf = np.array(list(map(mf, visible_points_x)))
+        if len(visible_points_x_mf) == 0:
+            translation_score_0_column.append(np.nan)
+            rotation_score_0_column.append(np.nan)
+            translation_score_column.append(np.nan)
+            rotation_score_column.append(np.nan)
+            continue
+
         visible_points_x_mf_o = visible_points_x_mf - x_mf
         ray_tracing_time += time.time() - ray_tracing_start_time
 
@@ -710,13 +717,6 @@ def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_tru
         ])
 
         delta_theta_list = [-0.1, -0.05, 0.05, 0.1]
-
-        if len(visible_points_x_mf) == 0:
-            translation_score_0_column.append(np.nan)
-            rotation_score_0_column.append(np.nan)
-            translation_score_column.append(np.nan)
-            rotation_score_column.append(np.nan)
-            continue
 
         translation_score_0_list = list()
         translation_score_list = list()
