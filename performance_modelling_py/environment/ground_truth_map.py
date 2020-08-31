@@ -17,7 +17,6 @@ import yaml
 from performance_modelling_py.utils import print_info, backup_file_if_exists, print_error, print_fatal
 from scipy import ndimage
 from scipy.spatial import Delaunay
-import matplotlib.pyplot as plt
 
 
 def trim(im, border_color):
@@ -209,15 +208,13 @@ class GroundTruthMap:
                         self._occupancy_map[x, y] = self.FREE
         return self._occupancy_map
 
-    def map_frame_to_image_coordinates(self, x_meters, y_meters):
+    def map_frame_to_image_coordinates(self, xy_meters):
         _, h = self.map_image.size
-        p_meters = np.array([x_meters, y_meters])
-        return list(map(int, np.array([0, h]) + np.array([1, -1]) * (self.map_frame_meters + p_meters) / self.resolution))
+        return list(map(int, np.array([0, h]) + np.array([1, -1]) * (self.map_frame_meters + xy_meters) / self.resolution))
 
-    def image_to_map_frame_coordinates(self, x_pixels, y_pixels):
+    def image_to_map_frame_coordinates(self, xy_pixels):
         _, h = self.map_image.size
-        p_pixels = np.array([x_pixels, y_pixels])
-        return self.resolution * (np.array([0, h]) + np.array([1, -1]) * p_pixels) - self.map_frame_meters
+        return self.resolution * (np.array([0, h]) + np.array([1, -1]) * xy_pixels) - self.map_frame_meters
 
     def image_y_up_to_map_frame_coordinates(self, p_pixels):
         return self.resolution * p_pixels - self.map_frame_meters
@@ -255,7 +252,7 @@ class GroundTruthMap:
             if not np.all(footprint_free_cell_bitmap):
                 continue
 
-            sampled_position_x_meters, sampled_position_y_meters = self.image_to_map_frame_coordinates(x, y)
+            sampled_position_x_meters, sampled_position_y_meters = self.image_to_map_frame_coordinates(np.array(x, y))
             sampled_orientation_radians = np.random.uniform(-np.pi, np.pi)
 
             if num_poses == 1:
@@ -416,6 +413,7 @@ class GroundTruthMap:
                 self.voronoi_graph.nodes
             ))
 
+        import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
         fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
 
@@ -500,6 +498,7 @@ class GroundTruthMap:
                 self.voronoi_graph.nodes
             ))
 
+        import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
         fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
 
@@ -575,7 +574,7 @@ class GroundTruthMap:
 
 
 if __name__ == '__main__':
-    environment_folders = sorted(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/test_datasets/dataset/*"))))
+    environment_folders = sorted(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/test_datasets/dataset/airlab_2"))))
     dump_path = path.expanduser("~/tmp/gt_maps/")
     print_info("computing environment data {}%".format(0))
     recompute_data = True
@@ -591,7 +590,7 @@ if __name__ == '__main__':
         black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=not recompute_data, map_files_dump_path=dump_path)
 
         # compute voronoi plot
-        robot_radius_plot = 2 * 0.2
+        robot_radius_plot = 1.5 * 0.2
         voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
         reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "reduced_voronoi.svg")
         deleaved_reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "deleaved_reduced_voronoi.svg")
