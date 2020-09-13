@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import glob
 import os
+import random
 import sys
 import traceback
 from collections import defaultdict, namedtuple
@@ -27,7 +28,7 @@ class hashable_dict(dict):
         return self.__key() == other.__key()
 
 
-def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, environment_folders, base_run_folder, num_runs, headless, show_ros_info):
+def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, environment_folders, base_run_folder, num_runs, shuffle, headless, show_ros_info):
 
     if not path.exists(base_run_folder):
         os.makedirs(base_run_folder)
@@ -100,6 +101,13 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
     print_info("number of repetition runs:        {}".format(num_runs))
     print_info("total number of runs:             {}".format(num_runs * num_combinations))
     print_info("remaining number of runs:         {}".format(num_runs_remaining))
+
+    if shuffle:
+        # shuffle the remaining params combinations, to avoid executing consecutively the run repetitions with the same combination
+        print_info("shuffling remaining params combinations")
+        random.shuffle(remaining_params_combinations)
+    else:
+        print_info("not shuffling remaining params combinations")
 
     for n_executed_runs, parameters_combination_dict in enumerate(remaining_params_combinations):
         environment_folder = environment_folders_by_name[parameters_combination_dict['environment_name']]
