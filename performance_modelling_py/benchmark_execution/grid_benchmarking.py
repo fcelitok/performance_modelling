@@ -8,7 +8,7 @@ import os
 import random
 import sys
 import traceback
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 
 import yaml
 from os import path
@@ -154,6 +154,9 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
             print_fatal(traceback.format_exc())
         except ZeroDivisionError:
             print_fatal(traceback.format_exc())
+        except SystemExit as system_exit_ex:
+            print_info("System exit code: ", system_exit_ex.code)
+            sys.exit(0)
         except:
             print_fatal(traceback.format_exc())
             sys.exit(0)
