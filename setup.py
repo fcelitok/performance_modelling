@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name="performance-modelling-py",
-    version="0.0.3",
+    version="0.0.4",
     author="Enrico Piazza",
     author_email="erico.piazza@polimi.it",
     description="TODO",

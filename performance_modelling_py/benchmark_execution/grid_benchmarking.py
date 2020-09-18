@@ -29,7 +29,7 @@ class hashable_dict(dict):
         return self.__key() == other.__key()
 
 
-def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, environment_folders, base_run_folder, num_runs, shuffle, headless, show_ros_info):
+def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, environment_folders, base_run_folder, num_runs, ignore_executed_params_combinations, shuffle, headless, show_ros_info):
 
     if not path.exists(base_run_folder):
         os.makedirs(base_run_folder)
@@ -65,21 +65,22 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
 
     executed_params_combinations = defaultdict(int)
     run_folders = sorted(list(filter(path.isdir, glob.glob(path.abspath(base_run_folder) + '/*'))))
-    for i, run_folder in enumerate(run_folders):
-        run_info_file_path = path.join(run_folder, "run_info.yaml")
-        if path.exists(run_info_file_path):
-            # noinspection PyBroadException
-            try:
-                with open(run_info_file_path) as run_info_file:
-                    run_info = yaml.safe_load(run_info_file)
-                    params_dict = run_info['run_parameters']
-                    params_dict['environment_name'] = path.basename(path.abspath(run_info['environment_folder']))
-                    for param_name, param_value in params_dict.items():
-                        params_dict[param_name] = tuple(param_value) if type(param_value) == list else param_value  # convert any list into a tuple to allow hashing
-                    params_hashable_dict = hashable_dict(params_dict)
-                    executed_params_combinations[params_hashable_dict] += 1
-            except:
-                print_error(traceback.format_exc())
+    if not ignore_executed_params_combinations:
+        for i, run_folder in enumerate(run_folders):
+            run_info_file_path = path.join(run_folder, "run_info.yaml")
+            if path.exists(run_info_file_path):
+                # noinspection PyBroadException
+                try:
+                    with open(run_info_file_path) as run_info_file:
+                        run_info = yaml.safe_load(run_info_file)
+                        params_dict = run_info['run_parameters']
+                        params_dict['environment_name'] = path.basename(path.abspath(run_info['environment_folder']))
+                        for param_name, param_value in params_dict.items():
+                            params_dict[param_name] = tuple(param_value) if type(param_value) == list else param_value  # convert any list into a tuple to allow hashing
+                        params_hashable_dict = hashable_dict(params_dict)
+                        executed_params_combinations[params_hashable_dict] += 1
+                except:
+                    print_error(traceback.format_exc())
 
     remaining_params_combinations = list()
     for parameters_combination_dict in parameters_combinations_dict_list:
@@ -95,9 +96,12 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
     num_combinations = len(parameters_combinations_dict_list)
     num_runs_remaining = len(remaining_params_combinations)
     num_executed_runs = len(run_folders)
-    num_executed_combinations = len(executed_params_combinations)
+    num_executed_combinations = len(filter(lambda x: x > 0, executed_params_combinations.values()))
 
-    print_info("found {num_executed_runs} executed runs with {num_executed_combinations} params combinations".format(num_executed_runs=num_executed_runs, num_executed_combinations=num_executed_combinations))
+    if ignore_executed_params_combinations:
+        print_info("ignoring previous runs")
+    else:
+        print_info("found {num_executed_runs} executed runs with {num_executed_combinations} params combinations".format(num_executed_runs=num_executed_runs, num_executed_combinations=num_executed_combinations))
     print_info("number of parameter combinations: {}".format(num_combinations))
     print_info("number of repetition runs:        {}".format(num_runs))
     print_info("total number of runs:             {}".format(num_runs * num_combinations))
