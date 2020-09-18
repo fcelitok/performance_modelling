@@ -9,6 +9,7 @@ import random
 import sys
 import traceback
 from collections import defaultdict
+from datetime import datetime
 
 import yaml
 from os import path
@@ -109,15 +110,18 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
     else:
         print_info("not shuffling remaining params combinations")
 
+    # generate a session id
+    session_id = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S_%f')
+
     for n_executed_runs, parameters_combination_dict in enumerate(remaining_params_combinations):
         environment_folder = environment_folders_by_name[parameters_combination_dict['environment_name']]
 
         # find an available run folder path
         i = 0
-        run_folder = path.join(base_run_folder, "run_{run_number:09d}".format(run_number=i))
+        run_folder = path.join(base_run_folder, "session_{session_id}_run_{run_number:09d}".format(session_id=session_id, run_number=i))
         while path.exists(run_folder):
             i += 1
-            run_folder = path.join(base_run_folder, "run_{run_number:09d}".format(run_number=i))
+            run_folder = path.join(base_run_folder, "session_{session_id}_run_{run_number:09d}".format(session_id=session_id, run_number=i))
 
         print_info("\n\n\nbenchmark: starting run {run_index} ({remaining_runs} remaining)".format(run_index=i, remaining_runs=len(remaining_params_combinations) - n_executed_runs))
         print_info("\tenvironment_folder:", environment_folder)
