@@ -590,7 +590,7 @@ if __name__ == '__main__':
         black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=not recompute_data, map_files_dump_path=dump_path)
 
         # compute voronoi plot
-        robot_radius_plot = 1.5 * 0.2
+        robot_radius_plot = 2.0 * 0.2
         voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
         reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "reduced_voronoi.svg")
         deleaved_reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "deleaved_reduced_voronoi.svg")
