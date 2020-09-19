@@ -628,7 +628,7 @@ def trajectory_length_metric(ground_truth_poses_file_path):
     return float(trajectory_length)
 
 
-def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_truth_poses_file_path, ground_truth_map, horizon_length=3.5, samples_per_second=10.0, max_iterations=20):
+def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_truth_poses_file_path, ground_truth_map, horizon_length=3.5, samples_per_second=1.0, max_iterations=10):
     # import matplotlib.pyplot as plt
     from icp import iterative_closest_point
     from skimage.draw import line, circle_perimeter
@@ -750,6 +750,9 @@ def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_tru
 
             translation = transform[:2, 2]
             translation_score = float(np.sqrt(np.sum((translation - delta_trans) ** 2)) / np.sqrt(np.sum(delta_trans ** 2)))
+            # translation_score:
+            #   0 -> icp correctly transformed x_prime points onto x points -> geometric similarity must be low (env has features)
+            #   1 -> icp could not transform x_prime points onto x points ->  geometric similarity must be high (env doesn't have features)
 
             # print("translation score: {s:1.4f} \t translation score_0: {s0:1.4f} \t i: {i}".format(s=translation_score, s0=scores[0], i=num_iterations))
 
