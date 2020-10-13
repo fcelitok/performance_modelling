@@ -1,3 +1,2 @@
-pip3 install -e .
 pip install -e .
-
+pip3 install -e .
