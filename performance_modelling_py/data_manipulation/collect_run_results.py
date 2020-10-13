@@ -1,7 +1,12 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
+
+import sys
+if sys.version_info.major < 3:
+    print("Python version less than 3")
+    sys.exit()
 
 import glob
 import argparse
@@ -35,6 +40,19 @@ def get_csv(result_path):
 def get_yaml(yaml_file_path):
     with open(yaml_file_path) as yaml_file:
         return yaml.load(yaml_file)
+
+
+def get_yaml_by_path(yaml_dict, keys):
+    assert(isinstance(keys, list))
+    try:
+        if len(keys) > 1:
+            return get_yaml_by_path(yaml_dict[keys[0]], keys[1:])
+        elif len(keys) == 1:
+            return yaml_dict[keys[0]]
+        else:
+            return None
+    except KeyError:
+        return None
 
 
 def collect_data(base_run_folder_path, invalidate_cache=False):
@@ -102,18 +120,16 @@ def collect_data(base_run_folder_path, invalidate_cache=False):
             df = df.append(run_record, ignore_index=True)
             continue
 
-        trajectory_length = metrics_dict['trajectory_length'] if 'trajectory_length' in metrics_dict else None
+        trajectory_length = get_yaml_by_path(metrics_dict, ['trajectory_length'])
         run_record['trajectory_length'] = trajectory_length
         if trajectory_length < 3.0 or trajectory_length is None:
             run_record['failure_rate'] = 1
             df = df.append(run_record, ignore_index=True)
             continue
 
-        if 'absolute_localization_correction_error' in metrics_dict and metrics_dict['absolute_localization_correction_error'] is not None:
-            run_record['mean_absolute_correction_error'] = metrics_dict['absolute_localization_correction_error']['mean']
-
-        if 'absolute_localization_error' in metrics_dict and metrics_dict['absolute_localization_error'] is not None:
-            run_record['mean_absolute_error'] = metrics_dict['absolute_localization_error']['mean']
+        run_record['mean_absolute_error'] = get_yaml_by_path(metrics_dict, ['absolute_localization_error', 'mean'])
+        run_record['mean_relative_translation_error'] = get_yaml_by_path(metrics_dict, ['relative_localization_error', 'random_relations', 'translation', 'mean'])
+        run_record['mean_relative_rotation_error'] = get_yaml_by_path(metrics_dict, ['relative_localization_error', 'random_relations', 'rotation', 'mean'])
 
         run_record['num_target_pose_set'] = len(run_events[run_events["event"] == "target_pose_set"])
         run_record['num_target_pose_reached'] = len(run_events[run_events["event"] == "target_pose_reached"])
@@ -145,17 +161,25 @@ def collect_data(base_run_folder_path, invalidate_cache=False):
         run_execution_time = supervisor_finish_time - run_start_time
         run_record['run_execution_time'] = run_execution_time
 
-        if metrics_dict['cpu_and_memory_usage'] is not None and 'amcl_accumulated_cpu_time' in metrics_dict['cpu_and_memory_usage']:
-            run_record['normalised_cpu_time'] = metrics_dict['cpu_and_memory_usage']['amcl_accumulated_cpu_time'] / run_execution_time
+        amcl_accumulated_cpu_time = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'amcl_accumulated_cpu_time'])
+        if amcl_accumulated_cpu_time is not None:
+            run_record['normalised_cpu_time'] = amcl_accumulated_cpu_time / run_execution_time
+            run_record['max_memory'] = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'amcl_uss'])
 
-        if metrics_dict['cpu_and_memory_usage'] is not None and 'amcl_uss' in metrics_dict['cpu_and_memory_usage']:
-            run_record['max_memory'] = metrics_dict['cpu_and_memory_usage']['amcl_uss']
+        slam_toolbox_localization_accumulated_cpu_time = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'localization_slam_toolbox_node_accumulated_cpu_time'])
+        if slam_toolbox_localization_accumulated_cpu_time is not None:
+            run_record['normalised_cpu_time'] = slam_toolbox_localization_accumulated_cpu_time / run_execution_time
+            run_record['max_memory'] = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'localization_slam_toolbox_node_uss'])
 
-        if metrics_dict['cpu_and_memory_usage'] is not None and 'localization_slam_toolbox_node_accumulated_cpu_time' in metrics_dict['cpu_and_memory_usage']:
-            run_record['normalised_cpu_time'] = metrics_dict['cpu_and_memory_usage']['localization_slam_toolbox_node_accumulated_cpu_time'] / run_execution_time
+        gmapping_accumulated_cpu_time = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'gmapping_accumulated_cpu_time'])
+        if gmapping_accumulated_cpu_time is not None:
+            run_record['normalised_cpu_time'] = gmapping_accumulated_cpu_time / run_execution_time
+            run_record['max_memory'] = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'gmapping_uss'])
 
-        if metrics_dict['cpu_and_memory_usage'] is not None and 'localization_slam_toolbox_node_uss' in metrics_dict['cpu_and_memory_usage']:
-            run_record['max_memory'] = metrics_dict['cpu_and_memory_usage']['localization_slam_toolbox_node_uss']
+        slam_toolbox_slam_accumulated_cpu_time = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'async_slam_toolbox_node_accumulated_cpu_time'])
+        if slam_toolbox_slam_accumulated_cpu_time is not None:
+            run_record['normalised_cpu_time'] = slam_toolbox_slam_accumulated_cpu_time / run_execution_time
+            run_record['max_memory'] = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'async_slam_toolbox_node_uss'])
 
         df = df.append(run_record, ignore_index=True)
 
@@ -188,4 +212,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     run_data_df, params = collect_data(args.base_run_folder, args.invalidate_cache)
-    print(run_data_df.groupby(by=list(params))['run_folder'].count())
+    print(run_data_df)
