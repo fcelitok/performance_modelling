@@ -4,6 +4,7 @@
 from __future__ import print_function
 
 import sys
+print("Python version:", sys.version_info)
 if sys.version_info.major < 3:
     print("Python version less than 3")
     sys.exit()
@@ -51,7 +52,7 @@ def get_yaml_by_path(yaml_dict, keys):
             return yaml_dict[keys[0]]
         else:
             return None
-    except KeyError:
+    except (KeyError, TypeError):
         return None
 
 
@@ -171,10 +172,10 @@ def collect_data(base_run_folder_path, invalidate_cache=False):
             run_record['normalised_cpu_time'] = slam_toolbox_localization_accumulated_cpu_time / run_execution_time
             run_record['max_memory'] = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'localization_slam_toolbox_node_uss'])
 
-        gmapping_accumulated_cpu_time = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'gmapping_accumulated_cpu_time'])
+        gmapping_accumulated_cpu_time = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'slam_gmapping_accumulated_cpu_time'])
         if gmapping_accumulated_cpu_time is not None:
             run_record['normalised_cpu_time'] = gmapping_accumulated_cpu_time / run_execution_time
-            run_record['max_memory'] = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'gmapping_uss'])
+            run_record['max_memory'] = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'slam_gmapping_uss'])
 
         slam_toolbox_slam_accumulated_cpu_time = get_yaml_by_path(metrics_dict, ['cpu_and_memory_usage', 'async_slam_toolbox_node_accumulated_cpu_time'])
         if slam_toolbox_slam_accumulated_cpu_time is not None:
