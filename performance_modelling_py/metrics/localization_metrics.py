@@ -311,6 +311,78 @@ def relative_localization_error_metrics(log_output_folder, estimated_poses_file_
     return relative_errors_dict
 
 
+def relative_localization_error_metrics_carmen_dataset(log_output_folder, estimated_poses_file_path, relations_file_path, alpha=0.99, max_error=0.02):
+    """
+    Generates the ordered and the random relations files and computes the metrics
+    """
+
+    if not path.exists(log_output_folder):
+        os.makedirs(log_output_folder)
+
+    # check required files exist
+    if not path.isfile(estimated_poses_file_path):
+        print_error("compute_relative_localization_error: estimated_poses file not found {}".format(estimated_poses_file_path))
+        return
+
+    if not path.isfile(relations_file_path):
+        print_error("compute_relative_localization_error: relations file not found {}".format(relations_file_path))
+        return
+
+    # find the metricEvaluator executable
+    metric_evaluator_exec_path = path.join(path.dirname(path.abspath(__file__)), "metricEvaluator", "metricEvaluator")
+
+    estimated_poses_df = pd.read_csv(estimated_poses_file_path)
+    if len(estimated_poses_df.index) < 2:
+        print_error("not enough estimated poses data points")
+        return
+
+    # convert estimated_poses_file to the CARMEN format
+    estimated_poses_carmen_file_path = path.join(log_output_folder, "estimated_poses_carmen_format")
+    with open(estimated_poses_carmen_file_path, "w") as estimated_poses_carmen_file:
+        for index, row in estimated_poses_df.iterrows():
+            estimated_poses_carmen_file.write("FLASER 0 0.0 0.0 0.0 {x} {y} {theta} {t}\n".format(x=row['x'], y=row['y'], theta=row['theta'], t=row['t']))
+
+    # compute metrics
+    relative_errors_dict = dict()
+    relative_errors_dict['random_relations'] = dict()
+
+    metric_evaluator_t_results_csv_path = path.join(log_output_folder, "t.csv")
+    metric_evaluator(exec_path=metric_evaluator_exec_path,
+                     poses_path=estimated_poses_carmen_file_path,
+                     relations_path=relations_file_path,
+                     weights="{1, 1, 1, 0, 0, 0}",
+                     log_path=path.join(log_output_folder, "t.log"),
+                     errors_path=metric_evaluator_t_results_csv_path,
+                     unsorted_errors_path=path.join(log_output_folder, "t_unsorted_errors"))
+
+    metric_evaluator_t_results_df = pd.read_csv(metric_evaluator_t_results_csv_path, sep=', ', engine='python')
+    relative_errors_dict['random_relations']['translation'] = dict()
+    relative_errors_dict['random_relations']['translation']['mean'] = float(metric_evaluator_t_results_df['Mean'][0])
+    relative_errors_dict['random_relations']['translation']['std'] = float(metric_evaluator_t_results_df['Std'][0])
+    relative_errors_dict['random_relations']['translation']['min'] = float(metric_evaluator_t_results_df['Min'][0])
+    relative_errors_dict['random_relations']['translation']['max'] = float(metric_evaluator_t_results_df['Max'][0])
+    relative_errors_dict['random_relations']['translation']['n'] = float(metric_evaluator_t_results_df['NumMeasures'][0])
+
+    metric_evaluator_r_results_csv_path = path.join(log_output_folder, "r.csv")
+    metric_evaluator(exec_path=metric_evaluator_exec_path,
+                     poses_path=estimated_poses_carmen_file_path,
+                     relations_path=relations_file_path,
+                     weights="{0, 0, 0, 1, 1, 1}",
+                     log_path=path.join(log_output_folder, "r.log"),
+                     errors_path=metric_evaluator_r_results_csv_path,
+                     unsorted_errors_path=path.join(log_output_folder, "r_unsorted_errors"))
+
+    metric_evaluator_r_results_df = pd.read_csv(metric_evaluator_r_results_csv_path, sep=', ', engine='python')
+    relative_errors_dict['random_relations']['rotation'] = dict()
+    relative_errors_dict['random_relations']['rotation']['mean'] = float(metric_evaluator_r_results_df['Mean'][0])
+    relative_errors_dict['random_relations']['rotation']['std'] = float(metric_evaluator_r_results_df['Std'][0])
+    relative_errors_dict['random_relations']['rotation']['min'] = float(metric_evaluator_r_results_df['Min'][0])
+    relative_errors_dict['random_relations']['rotation']['max'] = float(metric_evaluator_r_results_df['Max'][0])
+    relative_errors_dict['random_relations']['rotation']['n'] = float(metric_evaluator_r_results_df['NumMeasures'][0])
+
+    return relative_errors_dict
+
+
 def get_matrix_diff(p1, p2):
     """
     Computes the rototranslation difference of two points
@@ -619,6 +691,23 @@ def trajectory_length_metric(ground_truth_poses_file_path):
         return None
 
     df = pd.read_csv(ground_truth_poses_file_path)
+
+    squared_deltas = (df[['x', 'y']] - df[['x', 'y']].shift(periods=1)) ** 2  # equivalent to (x_2-x_1)**2, (y_2-y_1)**2, for each row
+    sum_of_squared_deltas = squared_deltas['x'] + squared_deltas['y']  # equivalent to (x_2-x_1)**2 + (y_2-y_1)**2, for each row
+    euclidean_distance_of_deltas = np.sqrt(sum_of_squared_deltas)  # equivalent to sqrt( (x_2-x_1)**2 + (y_2-y_1)**2 ), for each row
+    trajectory_length = euclidean_distance_of_deltas.sum()
+
+    return float(trajectory_length)
+
+
+def estimated_pose_trajectory_length_metric(estimated_poses_file_path):
+
+    # check required files exist
+    if not path.isfile(estimated_poses_file_path):
+        print_error("compute_trajectory_length: estimated_poses file not found {}".format(estimated_poses_file_path))
+        return None
+
+    df = pd.read_csv(estimated_poses_file_path)
 
     squared_deltas = (df[['x', 'y']] - df[['x', 'y']].shift(periods=1)) ** 2  # equivalent to (x_2-x_1)**2, (y_2-y_1)**2, for each row
     sum_of_squared_deltas = squared_deltas['x'] + squared_deltas['y']  # equivalent to (x_2-x_1)**2 + (y_2-y_1)**2, for each row

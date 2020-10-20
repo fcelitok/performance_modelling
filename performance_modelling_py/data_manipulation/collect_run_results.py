@@ -123,10 +123,10 @@ def collect_data(base_run_folder_path, invalidate_cache=False):
 
         trajectory_length = get_yaml_by_path(metrics_dict, ['trajectory_length'])
         run_record['trajectory_length'] = trajectory_length
-        if trajectory_length < 3.0 or trajectory_length is None:
-            run_record['failure_rate'] = 1
-            df = df.append(run_record, ignore_index=True)
-            continue
+        # if trajectory_length is None or trajectory_length < 3.0:
+        #     run_record['failure_rate'] = 1
+        #     df = df.append(run_record, ignore_index=True)
+        #     continue
 
         run_record['mean_absolute_error'] = get_yaml_by_path(metrics_dict, ['absolute_localization_error', 'mean'])
         run_record['mean_relative_translation_error'] = get_yaml_by_path(metrics_dict, ['relative_localization_error', 'random_relations', 'translation', 'mean'])
