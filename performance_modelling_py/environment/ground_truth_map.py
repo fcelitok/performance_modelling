@@ -57,7 +57,7 @@ def circle_given_points(p1, p2, p3):
     return c, r
 
 
-def black_white_to_ground_truth_map(input_map_path, map_info_path, occupied_threshold=150, blur_filter_radius=0, do_not_recompute=False, backup_if_exists=False, map_files_dump_path=None):
+def black_white_to_ground_truth_map(input_map_path, map_info_path, trim_borders=False, occupied_threshold=150, blur_filter_radius=0, do_not_recompute=False, backup_if_exists=False, map_files_dump_path=None):
     with open(map_info_path) as map_info_file:
         map_info = yaml.safe_load(map_info_file)
 
@@ -88,8 +88,11 @@ def black_white_to_ground_truth_map(input_map_path, map_info_path, occupied_thre
     threshold_image.save(path.expanduser("~/tmp/threshold_image.pgm"))
 
     # trim borders not containing black pixels (some simulators ignore non-black borders while placing the pixels in the simulated map and computing its resolution, so they need to be ignored in the following calculations)
-    trimmed_image = trim(threshold_image, GroundTruthMap.unknown_rgb)
-    trimmed_image.save(path.expanduser("~/tmp/trimmed_image.pgm"))
+    if trim_borders:
+        trimmed_image = trim(threshold_image, GroundTruthMap.unknown_rgb)
+        trimmed_image.save(path.expanduser("~/tmp/trimmed_image.pgm"))
+    else:
+        trimmed_image = threshold_image
 
     map_offset_meters = np.array(map_info['origin'][0:2], dtype=float)
 
@@ -574,7 +577,7 @@ class GroundTruthMap:
 
 
 if __name__ == '__main__':
-    environment_folders = sorted(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/test_datasets/dataset/airlab_2"))))
+    environment_folders = sorted(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/radish_datasets/dataset/intel"))))
     dump_path = path.expanduser("~/tmp/gt_maps/")
     print_info("computing environment data {}%".format(0))
     recompute_data = True
@@ -586,8 +589,9 @@ if __name__ == '__main__':
         map_info_file_path = path.join(environment_folder, "data", "map.yaml")
 
         # compute GroundTruthMap data from source image
-        source_map_file_path = path.join(environment_folder, "data", "source_map.png")
-        black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=not recompute_data, map_files_dump_path=dump_path)
+        source_map_file_path = path.join(environment_folder, "data", "source_map.pgm")
+        if path.exists(source_map_file_path):
+            black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=not recompute_data, map_files_dump_path=dump_path)
 
         # compute voronoi plot
         robot_radius_plot = 2.0 * 0.2
