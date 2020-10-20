@@ -54,16 +54,29 @@ def save_map_image(original_map_msg, image_file_path, width, height, info_file_p
             yaml.dump(yaml_dict, yaml_file, default_flow_style=False)
 
 
-if len(sys.argv) != 2:
-    print("ARGS!")
+bag_path = None
+destination_dir = None
+if len(sys.argv) < 2 or len(sys.argv) > 3:
+    print("Not enough or too many args:", sys.argv[0], 'bag_file.bag [images_destination_path]')
     sys.exit()
+elif len(sys.argv) == 2:
+    bag_path = path.expanduser(sys.argv[1])
+    if bag_path[-3:] != 'bag':
+        print("bag file extension should be 'bag'")
+        sys.exit()
 
-bag_path = path.expanduser(sys.argv[1])
+    destination_dir = path.basename(path.abspath(path.splitext(bag_path)[0]))
+elif len(sys.argv) == 3:
+    bag_path = path.expanduser(sys.argv[1])
+    destination_dir = path.expanduser(sys.argv[2])
+
+print("bag_path:", bag_path)
+print("destination_dir:", destination_dir)
+
 bag = rosbag.Bag(bag_path)
 
-destination_dir = "./map_images/"
-if not path.exists(destination_dir):
-    os.makedirs(destination_dir)
+# if not path.exists(destination_dir):
+#     os.makedirs(destination_dir)
 
 i = 0
 map_msg_list = list()
@@ -78,13 +91,16 @@ for msg in map_msg_list:
     if msg.info.height > max_height:
         max_height = msg.info.height
 
-for msg in map_msg_list:
-    map_image_path = path.join(destination_dir, "map_image_{i:05d}.png".format(i=i))
-    print("[{t}] saving image to".format(t=t.to_sec()), map_image_path)
-    save_map_image(msg, map_image_path, max_width, max_height)
-    i += 1
+if len(map_msg_list) > 1:
+    last_map_image_path = path.join(path.basename(path.abspath(destination_dir)) + "_last_map_image.png")
+    save_map_image(map_msg_list[-1], last_map_image_path, max_width, max_height)
+
+# for msg in map_msg_list:
+#     map_image_path = path.join(destination_dir, "map_image_{i:05d}.png".format(i=i))
+#     print("[{t}] saving image to".format(t=t.to_sec()), map_image_path)
+#     save_map_image(msg, map_image_path, max_width, max_height)
+#     i += 1
 
 bag.close()
 
-# then use the following command to make a gif:
-# ffmpeg -r 2 -i map_images/map_image_%05d.png map.gif
+# os.system("ffmpeg -r 2 -i {images_fs} {gif_path}".format(images_fs=path.join(destination_dir, "map_image_%05d.png"), gif_path=path.join(destination_dir, "map.gif")))
