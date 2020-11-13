@@ -95,7 +95,7 @@ def compute_ground_truth_interpolated_poses(estimated_poses_df, ground_truth_pos
     return interpolated_ground_truth_df
 
 
-def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder, geometric_similarity_file_path, scans_file_path, run_events_file_path, scans_rate=1.0):
+def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder, geometric_similarity_file_path, scans_file_path, run_events_file_path, scans_rate=1.0, recompute=False):
 
     # check required files and directories exist
     if not path.exists(log_output_folder):
@@ -112,7 +112,7 @@ def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder,
     # compute the geometric_similarity for the whole run
     geometric_similarity_exec_path = path.join(path.dirname(path.abspath(__file__)), "cartographer_geometric_similarity")
     log_output_file_path = path.join(log_output_folder, "geometric_similarity_log.txt")
-    if not path.exists(geometric_similarity_file_path):
+    if recompute or not path.exists(geometric_similarity_file_path):
         geometric_similarity(geometric_similarity_exec_path, scans_file_path, log_output_file_path, geometric_similarity_file_path, scans_rate)
 
     # get waypoints time intervals and compute the mean geometric similarity
@@ -171,6 +171,19 @@ def geometric_similarity_environment_metric(geometric_similarity_file_path, star
 
 
 def relative_localization_error_metrics_for_each_waypoint(log_output_folder, estimated_poses_file_path, ground_truth_poses_file_path, run_events_file_path, alpha=0.9, max_error=0.02, compute_sequential_relations=False):
+
+    # check required files exist
+    if not path.isfile(estimated_poses_file_path):
+        print_error("compute_relative_localization_error: estimated_poses file not found {}".format(estimated_poses_file_path))
+        return
+
+    if not path.isfile(ground_truth_poses_file_path):
+        print_error("compute_relative_localization_error: ground_truth_poses file not found {}".format(ground_truth_poses_file_path))
+        return
+
+    if not path.isfile(run_events_file_path):
+        print_error("compute_relative_localization_error: run_events file not found {}".format(run_events_file_path))
+        return
 
     run_events_df = pd.read_csv(run_events_file_path, engine='python', sep=', ')
     target_pose_reached_df = run_events_df[run_events_df.event == 'target_pose_reached']
