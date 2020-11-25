@@ -127,12 +127,9 @@ def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder,
         assert(start_timestamp < end_timestamp)
         metric_results_per_waypoint_list.append(geometric_similarity_environment_metric(geometric_similarity_file_path, start_time=start_timestamp, end_time=end_timestamp))
 
-    metric_results_per_waypoint['version'] = "0.1"
+    metric_results_per_waypoint['version'] = "0.2"
     metric_results_per_waypoint['geometric_similarity_per_waypoint_list'] = metric_results_per_waypoint_list
-    mean_of_traces = 0
-    for geometric_similarity_result in metric_results_per_waypoint_list:
-        mean_of_traces += geometric_similarity_result['mean_of_traces']
-    metric_results_per_waypoint['geometric_similarity_mean_of_traces'] = float(mean_of_traces / len(metric_results_per_waypoint_list))
+
     return metric_results_per_waypoint
 
 
@@ -159,10 +156,19 @@ def geometric_similarity_environment_metric(geometric_similarity_file_path, star
     flat_covariance_mats = geometric_similarity_df[["x_x", "x_y", "x_theta", "y_x", "y_y", "y_theta", "theta_x", "theta_y", "theta_theta"]].values
     covariance_mats = flat_covariance_mats.reshape((len(flat_covariance_mats), 3, 3))
 
-    mean_of_traces = np.mean(covariance_mats.trace(axis1=1, axis2=2))
+    if len(geometric_similarity_df) == 0:
+        print_error("no geometric similarity data from {} to {} in {}".format(start_time, end_time, geometric_similarity_file_path))
 
     metrics_result_dict = dict()
-    metrics_result_dict['mean_of_traces'] = float(mean_of_traces)
+    metrics_result_dict['mean_of_traces'] = float(np.mean(covariance_mats.trace(axis1=1, axis2=2)))
+    metrics_result_dict['mean_of_covariance_x_x'] = float(np.mean(covariance_mats[:, 0, 0]))
+    metrics_result_dict['mean_of_covariance_y_y'] = float(np.mean(covariance_mats[:, 1, 1]))
+    metrics_result_dict['mean_of_covariance_theta_theta'] = float(np.mean(covariance_mats[:, 2, 2]))
+
+    eigenvalues, eigenvectors = np.linalg.eig(covariance_mats)
+    translation_eigenvalues, translation_eigenvectors = np.linalg.eig(covariance_mats[:, :2, :2])
+    metrics_result_dict['mean_of_max_eigenvalue'] = float(np.mean(np.max(eigenvalues, axis=1)))
+    metrics_result_dict['mean_of_max_translation_eigenvalue'] = float(np.mean(np.max(translation_eigenvalues, axis=1)))
 
     metrics_result_dict['start_time'] = start_time
     metrics_result_dict['end_time'] = end_time
