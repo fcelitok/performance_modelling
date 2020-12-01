@@ -26,9 +26,9 @@ def metric_evaluator(exec_path, poses_path, relations_path, weights, log_path, e
         p.wait()
 
 
-def geometric_similarity(exec_path, scans_file_path, log_path, output_file_path, rate):
+def geometric_similarity(exec_path, scans_file_path, log_path, output_file_path, rate, range_limit):
     with open(log_path, 'w') as stdout_log_file:
-        p = subprocess.Popen([exec_path, scans_file_path, output_file_path, str(rate)], stdout=stdout_log_file)
+        p = subprocess.Popen([exec_path, scans_file_path, output_file_path, str(rate), str(range_limit)], stdout=stdout_log_file)
         p.wait()
 
 
@@ -95,7 +95,7 @@ def compute_ground_truth_interpolated_poses(estimated_poses_df, ground_truth_pos
     return interpolated_ground_truth_df
 
 
-def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder, geometric_similarity_file_path, scans_file_path, run_events_file_path, scans_rate=1.0, recompute=False):
+def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder, geometric_similarity_file_path, scans_file_path, run_events_file_path, scans_rate=1.0, range_limit=30.0, recompute=False):
 
     # check required files and directories exist
     if not path.exists(log_output_folder):
@@ -113,7 +113,7 @@ def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder,
     geometric_similarity_exec_path = path.join(path.dirname(path.abspath(__file__)), "cartographer_geometric_similarity")
     log_output_file_path = path.join(log_output_folder, "geometric_similarity_log.txt")
     if recompute or not path.exists(geometric_similarity_file_path):
-        geometric_similarity(geometric_similarity_exec_path, scans_file_path, log_output_file_path, geometric_similarity_file_path, scans_rate)
+        geometric_similarity(geometric_similarity_exec_path, scans_file_path, log_output_file_path, geometric_similarity_file_path, scans_rate, range_limit)
 
     # get waypoints time intervals and compute the mean geometric similarity
     run_events_df = pd.read_csv(run_events_file_path, engine='python', sep=', ')
@@ -127,7 +127,7 @@ def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder,
         assert(start_timestamp < end_timestamp)
         metric_results_per_waypoint_list.append(geometric_similarity_environment_metric(geometric_similarity_file_path, start_time=start_timestamp, end_time=end_timestamp))
 
-    metric_results_per_waypoint['version'] = "0.2"
+    metric_results_per_waypoint['version'] = "0.3"
     metric_results_per_waypoint['geometric_similarity_per_waypoint_list'] = metric_results_per_waypoint_list
 
     return metric_results_per_waypoint
@@ -153,11 +153,10 @@ def geometric_similarity_environment_metric(geometric_similarity_file_path, star
     else:
         end_time = geometric_similarity_df.iloc[-1].t
 
+    geometric_similarity_df = geometric_similarity_df[geometric_similarity_df.x_x < np.inf]  # ignore rows with infinite covariance (due to laser scan with no valid ranges)
+
     flat_covariance_mats = geometric_similarity_df[["x_x", "x_y", "x_theta", "y_x", "y_y", "y_theta", "theta_x", "theta_y", "theta_theta"]].values
     covariance_mats = flat_covariance_mats.reshape((len(flat_covariance_mats), 3, 3))
-
-    if len(geometric_similarity_df) == 0:
-        print_error("no geometric similarity data from {} to {} in {}".format(start_time, end_time, geometric_similarity_file_path))
 
     metrics_result_dict = dict()
     metrics_result_dict['mean_of_traces'] = float(np.mean(covariance_mats.trace(axis1=1, axis2=2)))
@@ -169,10 +168,12 @@ def geometric_similarity_environment_metric(geometric_similarity_file_path, star
     translation_eigenvalues, translation_eigenvectors = np.linalg.eig(covariance_mats[:, :2, :2])
     metrics_result_dict['mean_of_max_eigenvalue'] = float(np.mean(np.max(eigenvalues, axis=1)))
     metrics_result_dict['mean_of_max_translation_eigenvalue'] = float(np.mean(np.max(translation_eigenvalues, axis=1)))
+    metrics_result_dict['mean_of_min_translation_eigenvalue'] = float(np.mean(np.min(translation_eigenvalues, axis=1)))
+    metrics_result_dict['mean_of_translation_eigenvalues_ratio'] = float(np.mean(np.min(translation_eigenvalues, axis=1)/np.max(translation_eigenvalues, axis=1)))
 
     metrics_result_dict['start_time'] = start_time
     metrics_result_dict['end_time'] = end_time
-    metrics_result_dict['version'] = "0.1"
+    metrics_result_dict['version'] = "0.2"
     return metrics_result_dict
 
 
