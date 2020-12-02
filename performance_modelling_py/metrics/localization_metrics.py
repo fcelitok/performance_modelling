@@ -95,6 +95,86 @@ def compute_ground_truth_interpolated_poses(estimated_poses_df, ground_truth_pos
     return interpolated_ground_truth_df
 
 
+def lidar_visibility_environment_metric_for_each_waypoint(scans_file_path, run_events_file_path, range_limit, scans_rate=1.0):
+
+    # check required files and directories exist
+    if not path.isfile(scans_file_path):
+        print_error("lidar_visibility_environment_metric_for_each_waypoint: scans file not found {}".format(scans_file_path))
+        return
+
+    if not path.isfile(run_events_file_path):
+        print_error("lidar_visibility_environment_metric_for_each_waypoint: run_events file not found {}".format(run_events_file_path))
+        return
+
+    # get waypoints time intervals and compute the mean lidar visibility
+    run_events_df = pd.read_csv(run_events_file_path, engine='python', sep=', ')
+    target_pose_reached_df = run_events_df[run_events_df.event == 'target_pose_reached']
+    target_pose_reached_timestamps_df = target_pose_reached_df.timestamp.reset_index(drop=True)
+    waypoints_start_end_times_df = pd.DataFrame({'start_timestamp': list(target_pose_reached_timestamps_df[0:-1]), 'end_timestamp': list(target_pose_reached_timestamps_df[1:])})
+    metric_results_per_waypoint = dict()
+    metric_results_per_waypoint_list = list()
+
+    # read scans file
+    with open(scans_file_path) as scans_file:
+        scan_lines = scans_file.read().split('\n')
+
+    lidar_visibility_list = list()
+
+    last_accepted_range_time = -np.inf
+    for scan_line in scan_lines:
+        scan_fields = scan_line.split(', ')
+        if len(scan_fields) > 1:
+            t, angle_min, angle_max, angle_increment, range_min, range_max = map(float, scan_fields[0:6])
+            if t - last_accepted_range_time > 1.0/scans_rate:
+                last_accepted_range_time = t
+                ranges = list(map(float, scan_fields[6:]))
+                visible_ranges = list(filter(lambda r: range_min < r < range_max and r < range_limit, ranges))
+                num_valid_ranges = len(visible_ranges)
+                record = {
+                    't': t,
+                    'ranges_min': float(min(ranges) if len(ranges) > 0 else np.nan),
+                    'ranges_max': float(max(ranges) if len(ranges) > 0 else np.nan),
+                    'ranges_median': float(np.median(ranges) if len(ranges) > 0 else np.nan),
+                    'ranges_mean': float(np.mean(ranges) if len(ranges) > 0 else np.nan),
+                    'visible_ranges_min': float(min(visible_ranges) if len(visible_ranges) > 0 else np.nan),
+                    'visible_ranges_max': float(max(visible_ranges) if len(visible_ranges) > 0 else np.nan),
+                    'visible_ranges_median': float(np.median(visible_ranges) if len(visible_ranges) > 0 else np.nan),
+                    'visible_ranges_mean': float(np.mean(visible_ranges) if len(visible_ranges) > 0 else np.nan),
+                    'visible_ranges_count': num_valid_ranges,
+                    'visible_ranges_ratio': float(num_valid_ranges)/len(ranges),
+                    'visible_fov_rad': float(num_valid_ranges * angle_increment),
+                    'visible_fov_deg': float(num_valid_ranges * angle_increment * 180 / np.pi),
+                }
+                lidar_visibility_list.append(record)
+
+    lidar_visibility_df = pd.DataFrame(lidar_visibility_list)
+
+    # compute the lidar_visibility for each waypoint
+    for index, start_timestamp, end_timestamp in waypoints_start_end_times_df[['start_timestamp', 'end_timestamp']].itertuples():
+        assert(start_timestamp < end_timestamp)
+        waypoint_scans_df = lidar_visibility_df.loc[(start_timestamp < lidar_visibility_df.t) & (lidar_visibility_df.t < end_timestamp)]
+        waypoint_scans_dict = dict()
+        waypoint_scans_dict["mean_ranges_min"] = float(waypoint_scans_df.ranges_min.mean())
+        waypoint_scans_dict["mean_ranges_max"] = float(waypoint_scans_df.ranges_max.mean())
+        waypoint_scans_dict["mean_ranges_median"] = float(waypoint_scans_df.ranges_median.mean())
+        waypoint_scans_dict["mean_ranges_mean"] = float(waypoint_scans_df.ranges_mean.mean())
+        waypoint_scans_dict["mean_visible_ranges_min"] = float(waypoint_scans_df.visible_ranges_min.mean())
+        waypoint_scans_dict["mean_visible_ranges_max"] = float(waypoint_scans_df.visible_ranges_max.mean())
+        waypoint_scans_dict["mean_visible_ranges_median"] = float(waypoint_scans_df.visible_ranges_median.mean())
+        waypoint_scans_dict["mean_visible_ranges_mean"] = float(waypoint_scans_df.visible_ranges_mean.mean())
+        waypoint_scans_dict["mean_visible_ranges_count"] = float(waypoint_scans_df.visible_ranges_count.mean())
+        waypoint_scans_dict["mean_visible_ranges_ratio"] = float(waypoint_scans_df.visible_ranges_ratio.mean())
+        waypoint_scans_dict["mean_visible_fov_deg"] = float(waypoint_scans_df.visible_fov_deg.mean())
+        waypoint_scans_dict["start_time"] = start_timestamp
+        waypoint_scans_dict["end_time"] = end_timestamp
+        metric_results_per_waypoint_list.append(waypoint_scans_dict)
+
+    metric_results_per_waypoint['version'] = "0.1"
+    metric_results_per_waypoint['lidar_visibility_per_waypoint_list'] = metric_results_per_waypoint_list
+
+    return metric_results_per_waypoint
+
+
 def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder, geometric_similarity_file_path, scans_file_path, run_events_file_path, scans_rate=1.0, range_limit=30.0, recompute=False):
 
     # check required files and directories exist
@@ -730,109 +810,6 @@ def absolute_error_vs_voronoi_radius(estimated_poses_file_path, ground_truth_pos
     return trajectory_df
 
 
-def absolute_error_vs_scan_range(estimated_poses_file_path, ground_truth_poses_file_path, scans_file_path, samples_per_second=1.0):
-
-    # check required files exist
-    if not path.isfile(estimated_poses_file_path):
-        print_error("absolute_localization_error_metrics: estimated_poses file not found {}".format(estimated_poses_file_path))
-        return
-
-    if not path.isfile(ground_truth_poses_file_path):
-        print_error("absolute_localization_error_metrics: ground_truth_poses file not found {}".format(ground_truth_poses_file_path))
-        return
-
-    if not path.isfile(scans_file_path):
-        print_error("absolute_localization_error_metrics: scans_file_path file not found {}".format(scans_file_path))
-        return
-
-    start_time = time.time()
-    estimated_poses_df = pd.read_csv(estimated_poses_file_path)
-    if len(estimated_poses_df.index) < 2:
-        print_error("not enough estimated poses data points")
-        return
-    print_info("estimated_poses_df", time.time() - start_time)
-
-    with open(scans_file_path) as scans_file:
-        scan_lines = scans_file.read().split('\n')
-
-    start_time = time.time()
-    scans_df = pd.DataFrame(columns=['t', 'min_range', 'max_range', 'median_range', 'num_valid_ranges'])
-    for scan_line in scan_lines:
-        scan_fields = scan_line.split(', ')
-        if len(scan_fields) > 1:
-            t, angle_min, angle_max, angle_increment, range_min, range_max = map(float, scan_fields[0:6])
-            ranges = map(float, scan_fields[6:])
-            num_valid_ranges = sum(map(lambda r: range_min < r < range_max, ranges))
-            record = {
-                't': t,
-                'min_range': min(ranges),
-                'max_range': max(ranges),
-                'median_range': np.median(ranges),
-                'num_valid_ranges': num_valid_ranges,
-                'sensor_range_min': range_min,
-                'sensor_range_max': range_max,
-                'num_ranges': len(ranges),
-                'angle_increment': angle_increment,
-                'fov_rad': angle_max - angle_min
-            }
-            scans_df = scans_df.append(record, ignore_index=True)
-    print_info("scans_df", time.time() - start_time)
-
-    # print(scans_df)
-
-    start_time = time.time()
-    ground_truth_poses_df = pd.read_csv(ground_truth_poses_file_path)
-    print_info("ground_truth_poses_df", time.time() - start_time)
-
-    start_time = time.time()
-    ground_truth_interpolated_poses_file_path = path.splitext(estimated_poses_file_path)[0] + "ground_truth_interpolated.csv"
-    if path.exists(ground_truth_interpolated_poses_file_path):
-        complete_trajectory_df = pd.read_csv(ground_truth_interpolated_poses_file_path)
-    else:
-        complete_trajectory_df = compute_ground_truth_interpolated_poses(estimated_poses_df, ground_truth_poses_df)
-        complete_trajectory_df.to_csv(ground_truth_interpolated_poses_file_path)
-
-    run_duration = ground_truth_poses_df.iloc[-1]['t'] - ground_truth_poses_df.iloc[0]['t']
-    resample_n = int(run_duration*samples_per_second)
-    resample_ratio = max(1, len(complete_trajectory_df) // resample_n)
-    trajectory_df = complete_trajectory_df.iloc[::resample_ratio].copy(deep=False)
-    trajectory_df['abs_err'] = np.sqrt((trajectory_df['x_est'] - trajectory_df['x_gt'])**2 + (trajectory_df['y_est'] - trajectory_df['y_gt'])**2)
-    # print(trajectory_df)
-    print_info("trajectory_df", time.time() - start_time)
-
-    start_time = time.time()
-    merge_tolerance = 0.25
-    tolerance = pd.Timedelta('{}s'.format(merge_tolerance))
-    trajectory_df['t_datetime'] = pd.to_datetime(trajectory_df['t'], unit='s')
-    scans_df['t_datetime'] = pd.to_datetime(scans_df['t'], unit='s')
-    near_matches_df = pd.merge_asof(
-        left=scans_df,
-        right=trajectory_df,
-        on='t_datetime',
-        direction='nearest',
-        tolerance=tolerance,
-        suffixes=('_scan', '_gt')
-    )
-    trajectory_and_scan_df = near_matches_df[(pd.notnull(near_matches_df['t_scan'])) & (pd.notnull(near_matches_df['t_gt']))].copy(deep=False)
-    print_info("trajectory_and_scan_df", time.time() - start_time)
-
-    # import matplotlib.pyplot as plt
-    # plt.scatter(trajectory_and_scan_df['min_range'], trajectory_and_scan_df['abs_err'])  # , color='red', s=4.0, marker='o')
-    # plt.xlabel("min_range")
-    # plt.ylabel("abs_err")
-    # plt.show()
-    # plt.cla()
-    #
-    # plt.plot(trajectory_and_scan_df['t_gt'], trajectory_and_scan_df['abs_err'])
-    # plt.plot(trajectory_and_scan_df['t_scan'], trajectory_and_scan_df['min_range']/trajectory_and_scan_df['sensor_range_max'])
-    # plt.plot(trajectory_and_scan_df['t_scan'], trajectory_and_scan_df['num_valid_ranges']/trajectory_and_scan_df['num_ranges'])
-    # plt.legend()
-    # plt.show()
-    # plt.cla()
-
-    return trajectory_and_scan_df
-
-
 def trajectory_length_metric(ground_truth_poses_file_path):
 
     # check required files exist
@@ -865,259 +842,6 @@ def estimated_pose_trajectory_length_metric(estimated_poses_file_path):
     trajectory_length = euclidean_distance_of_deltas.sum()
 
     return float(trajectory_length)
-
-#
-# def absolute_error_vs_geometric_similarity(estimated_poses_file_path, ground_truth_poses_file_path, ground_truth_map, horizon_length=3.5, samples_per_second=1.0, max_iterations=10):
-#     # import matplotlib.pyplot as plt
-#     from icp import iterative_closest_point
-#     from skimage.draw import line, circle_perimeter
-#     # plt.rcParams["figure.figsize"] = (10, 10)
-#
-#     start_time = time.time()
-#     estimated_poses_df = pd.read_csv(estimated_poses_file_path)
-#     if len(estimated_poses_df.index) < 2:
-#         print_error("not enough estimated poses data points")
-#         return
-#     print_info("estimated_poses_df", time.time() - start_time)
-#
-#     start_time = time.time()
-#     ground_truth_poses_df = pd.read_csv(ground_truth_poses_file_path)
-#     print_info("ground_truth_poses_df", time.time() - start_time)
-#
-#     start_time = time.time()
-#     ground_truth_interpolated_poses_file_path = path.splitext(estimated_poses_file_path)[0] + "ground_truth_interpolated.csv"
-#     if path.exists(ground_truth_interpolated_poses_file_path):
-#         print_info("using cached ground_truth_interpolated_poses [{}]".format(ground_truth_interpolated_poses_file_path))
-#         complete_trajectory_df = pd.read_csv(ground_truth_interpolated_poses_file_path)
-#     else:
-#         complete_trajectory_df = compute_ground_truth_interpolated_poses(estimated_poses_df, ground_truth_poses_df)
-#         complete_trajectory_df.to_csv(ground_truth_interpolated_poses_file_path)
-#
-#     run_duration = ground_truth_poses_df.iloc[-1]['t'] - ground_truth_poses_df.iloc[0]['t']
-#     resample_n = int(run_duration*samples_per_second)
-#     resample_ratio = max(1, len(complete_trajectory_df) // resample_n)
-#     trajectory_df = complete_trajectory_df.iloc[::resample_ratio].copy(deep=False)
-#     trajectory_df['abs_err'] = np.sqrt((trajectory_df['x_est'] - trajectory_df['x_gt'])**2 + (trajectory_df['y_est'] - trajectory_df['y_gt'])**2)
-#     print_info("trajectory_df", time.time() - start_time)
-#
-#     delta_length = 0.2  # displacement of x and x_prime
-#     ic = ground_truth_map.map_frame_to_image_coordinates
-#     mf = ground_truth_map.image_to_map_frame_coordinates
-#
-#     map_image_array = np.array(ground_truth_map.map_image.convert(mode="L")).transpose()
-#     occupancy_grid = map_image_array == 0
-#
-#     translation_score_0_column = list()
-#     translation_score_column = list()
-#     rotation_score_0_column = list()
-#     rotation_score_column = list()
-#     plot_lines = list()
-#     icp_time = 0
-#     ray_tracing_time = 0
-#
-#     rows_count = len(trajectory_df[['x_gt', 'y_gt']])
-#     progress_count = 0
-#
-#     for i, row_df in trajectory_df[['x_gt', 'y_gt']].iterrows():
-#         x_mf = np.array(row_df)
-#         p_x, p_y = ic(x_mf)
-#
-#         ray_tracing_start_time = time.time()
-#         visible_points_x = set()
-#         perimeter_points = np.array(circle_perimeter(p_x, p_y, int((horizon_length + delta_length)/ground_truth_map.resolution), method='andres')).transpose()
-#         for perimeter_x, perimeter_y in perimeter_points:
-#
-#             ray_points = np.array(line(p_x, p_y, perimeter_x, perimeter_y)).transpose()
-#             for ray_x, ray_y in ray_points:
-#                 if occupancy_grid[ray_x, ray_y]:
-#                     visible_points_x.add((ray_x, ray_y))
-#                     break
-#
-#         visible_points_x_mf = np.array(list(map(mf, visible_points_x)))
-#         if len(visible_points_x_mf) == 0:
-#             translation_score_0_column.append(np.nan)
-#             rotation_score_0_column.append(np.nan)
-#             translation_score_column.append(np.nan)
-#             rotation_score_column.append(np.nan)
-#             continue
-#
-#         visible_points_x_mf_o = visible_points_x_mf - x_mf
-#         ray_tracing_time += time.time() - ray_tracing_start_time
-#
-#         delta_trans_list = delta_length * np.array([
-#             (1, 0),
-#             (0, 1),
-#             (-1, 0),
-#             (0, -1),
-#             (.7, .7),
-#             (.7, -.7),
-#             (-.7, .7),
-#             (-.7, -.7),
-#         ])
-#
-#         delta_theta_list = [-0.1, -0.05, 0.05, 0.1]
-#
-#         translation_score_0_list = list()
-#         translation_score_list = list()
-#         for delta_trans in delta_trans_list:
-#             x_prime_mf = x_mf + delta_trans
-#             p_x_prime, p_y_prime = ic(x_prime_mf)
-#
-#             ray_tracing_start_time = time.time()
-#             visible_points_x_prime = set()
-#             perimeter_points_prime = np.array(circle_perimeter(p_x_prime, p_y_prime, int(horizon_length / ground_truth_map.resolution), method='andres')).transpose()
-#             for perimeter_x_prime, perimeter_y_prime in perimeter_points_prime:
-#
-#                 ray_points_prime = np.array(line(p_x_prime, p_y_prime, perimeter_x_prime, perimeter_y_prime)).transpose()
-#                 for ray_x_prime, ray_y_prime in ray_points_prime:
-#                     if occupancy_grid[ray_x_prime, ray_y_prime]:
-#                         visible_points_x_prime.add((ray_x_prime, ray_y_prime))
-#                         break
-#
-#             visible_points_x_prime_mf = np.array(list(map(mf, visible_points_x_prime)))
-#             ray_tracing_time += time.time() - ray_tracing_start_time
-#
-#             if len(visible_points_x_prime_mf) == 0:
-#                 continue
-#
-#             visible_points_x_prime_mf_o = visible_points_x_prime_mf - x_prime_mf
-#
-#             start_time = time.time()
-#             transform, scores, transformed_points_prime, num_iterations = iterative_closest_point(visible_points_x_prime_mf_o, visible_points_x_mf_o, max_iterations=max_iterations, tolerance=0.001)
-#
-#             translation_score_0_list.append(scores[0])
-#
-#             translation = transform[:2, 2]
-#             translation_score = float(np.sqrt(np.sum((translation - delta_trans) ** 2)) / np.sqrt(np.sum(delta_trans ** 2)))
-#             # translation_score:
-#             #   0 -> icp correctly transformed x_prime points onto x points -> geometric similarity must be low (env has features)
-#             #   1 -> icp could not transform x_prime points onto x points ->  geometric similarity must be high (env doesn't have features)
-#
-#             # print("translation score: {s:1.4f} \t translation score_0: {s0:1.4f} \t i: {i}".format(s=translation_score, s0=scores[0], i=num_iterations))
-#
-#             translation_score_list.append(translation_score)
-#             icp_time += time.time() - start_time
-#
-#             # if translation_score > 0.5:
-#             #     plt.scatter(*visible_points_x_mf_o.transpose(), color='black', marker='x')
-#             #     plt.scatter(*visible_points_x_prime_mf_o.transpose(), color='red', marker='x')
-#             #     plt.scatter(*transformed_points_prime.transpose(), color='blue', marker='x')
-#             #     hl = horizon_length + delta_length
-#             #     plt.xlim(-hl, hl)
-#             #     plt.ylim(-hl, hl)
-#             #     plt.gca().set_aspect('equal', adjustable='box')
-#             #     plt.show()
-#
-#             plot_lines.append((x_mf, x_prime_mf, translation_score))
-#
-#         if len(translation_score_0_list) == 0:
-#             translation_score_0_column.append(np.nan)
-#             translation_score_column.append(np.nan)
-#         else:
-#             translation_score_0_column.append(np.mean(translation_score_0_list))
-#             translation_score_column.append(np.mean(translation_score_list))
-#
-#         rotation_score_0_list = list()
-#         rotation_score_list = list()
-#         for delta_theta in delta_theta_list:
-#             rot_mat = np.array([
-#                 [np.cos(delta_theta), np.sin(delta_theta)],
-#                 [-np.sin(delta_theta), np.cos(delta_theta)]
-#             ])
-#             visible_points_x_prime_mf_o = np.dot(visible_points_x_mf_o, rot_mat)
-#
-#             start_time = time.time()
-#             transform, scores, transformed_points_prime, num_iterations = iterative_closest_point(visible_points_x_prime_mf_o, visible_points_x_mf_o, max_iterations=max_iterations, tolerance=0.001)
-#
-#             rotation_score_0_list.append(scores[0])
-#
-#             rotation_mat = transform[:2, :2].T
-#             rotation = math.atan2(rotation_mat[0, 1], rotation_mat[0, 0])
-#             rotation_score = float(np.fabs(rotation + delta_theta)) / np.fabs(delta_theta)
-#
-#             # print("rotation_score: {s:1.4f} \t rotation_score_0: {s0:1.4f} \t i: {i} \t transform angle: {r:1.4f} \t delta theta: {dt:1.4f}".format(s=rotation_score, s0=scores[0], i=num_iterations, r=rotation, dt=delta_theta))
-#
-#             rotation_score_list.append(rotation_score)
-#             icp_time += time.time() - start_time
-#
-#             # if rotation_score > 0.5:
-#             #     plt.scatter(*visible_points_x_mf_o.transpose(), color='black', marker='x')
-#             #     plt.scatter(*visible_points_x_prime_mf_o.transpose(), color='red', marker='x')
-#             #     plt.scatter(*transformed_points_prime.transpose(), color='blue', marker='x')
-#             #     hl = horizon_length + delta_length
-#             #     plt.xlim(-hl, hl)
-#             #     plt.ylim(-hl, hl)
-#             #     plt.gca().set_aspect('equal', adjustable='box')
-#             #     plt.show()
-#
-#             # plot_lines.append((x_mf, x_prime_mf, translation_score))
-#
-#         if len(rotation_score_0_list) == 0:
-#             rotation_score_0_column.append(np.nan)
-#             rotation_score_column.append(np.nan)
-#         else:
-#             rotation_score_0_column.append(np.mean(rotation_score_0_list))
-#             rotation_score_column.append(np.mean(rotation_score_list))
-#
-#         progress_count += 1
-#         print_info(int(progress_count / float(rows_count) * 100), "%", replace_previous_line=True)
-#
-#     trajectory_df['translation_score_0'] = translation_score_0_column
-#     trajectory_df['translation_score'] = translation_score_column
-#     trajectory_df['rotation_score_0'] = rotation_score_0_column
-#     trajectory_df['rotation_score'] = rotation_score_column
-#
-#     # print(trajectory_df)
-#
-#     print_info("icp_time", icp_time)
-#     print_info("ray_tracing_time", ray_tracing_time)
-#
-#     # for (x_0, y_0), (x_1, y_1), score in plot_lines:
-#     #     plt.plot([x_0, x_1], [y_0, y_1], linewidth=3*score, color='black')
-#     # plt.plot([trajectory_df['x_gt'], trajectory_df['x_est']], [trajectory_df['y_gt'], trajectory_df['y_est']], color='red')
-#     # plt.show()
-#
-#     # plt.plot(trajectory_df['t'], trajectory_df['abs_err'], label='abs_err')
-#     # plt.plot(trajectory_df['t'], trajectory_df['rotation_score_0'], label='rotation_score_0')
-#     # plt.legend()
-#     # plt.show()
-#     #
-#     # plt.scatter(trajectory_df['rotation_score_0'], trajectory_df['abs_err'])
-#     # plt.xlabel("rotation_score_0")
-#     # plt.ylabel("abs_err")
-#     # plt.legend()
-#     # plt.show()
-#     #
-#     # plt.plot(trajectory_df['t'], trajectory_df['abs_err'], label='abs_err')
-#     # plt.plot(trajectory_df['t'], trajectory_df['rotation_score'], label='rotation_score')
-#     # plt.legend()
-#     # plt.show()
-#     #
-#     # plt.scatter(trajectory_df['rotation_score'], trajectory_df['abs_err'], label='abs_err vs rotation_score')
-#     # plt.xlabel("rotation_score")
-#     # plt.ylabel("abs_err")
-#     # plt.legend()
-#     # plt.show()
-#     #
-#     # plt.plot(trajectory_df['t'], trajectory_df['abs_err'], label='abs_err')
-#     # plt.plot(trajectory_df['t'], trajectory_df['translation_score_0'], label='translation_score_0')
-#     # plt.plot(trajectory_df['t'], trajectory_df['translation_score'], label='translation_score')
-#     # plt.legend()
-#     # plt.show()
-#     #
-#     # plt.scatter(trajectory_df['translation_score_0'], trajectory_df['abs_err'], label='abs_err vs translation_score_0')
-#     # plt.xlabel("translation_score_0")
-#     # plt.ylabel("abs_err")
-#     # plt.legend()
-#     # plt.show()
-#     #
-#     # plt.scatter(trajectory_df['translation_score'], trajectory_df['abs_err'], label='abs_err vs translation_score')
-#     # plt.xlabel("translation_score")
-#     # plt.ylabel("abs_err")
-#     # plt.legend()
-#     # plt.show()
-#
-#     return trajectory_df
 
 
 # def test_metrics(run_output_folder):
