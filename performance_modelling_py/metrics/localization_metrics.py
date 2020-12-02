@@ -207,7 +207,7 @@ def geometric_similarity_environment_metric_for_each_waypoint(log_output_folder,
         assert(start_timestamp < end_timestamp)
         metric_results_per_waypoint_list.append(geometric_similarity_environment_metric(geometric_similarity_file_path, start_time=start_timestamp, end_time=end_timestamp))
 
-    metric_results_per_waypoint['version'] = "0.3"
+    metric_results_per_waypoint['version'] = "0.4"
     metric_results_per_waypoint['geometric_similarity_per_waypoint_list'] = metric_results_per_waypoint_list
 
     return metric_results_per_waypoint
@@ -233,27 +233,29 @@ def geometric_similarity_environment_metric(geometric_similarity_file_path, star
     else:
         end_time = geometric_similarity_df.iloc[-1].t
 
+    inf_covariance_count = len(geometric_similarity_df[geometric_similarity_df.x_x == np.inf])
     geometric_similarity_df = geometric_similarity_df[geometric_similarity_df.x_x < np.inf]  # ignore rows with infinite covariance (due to laser scan with no valid ranges)
 
     flat_covariance_mats = geometric_similarity_df[["x_x", "x_y", "x_theta", "y_x", "y_y", "y_theta", "theta_x", "theta_y", "theta_theta"]].values
     covariance_mats = flat_covariance_mats.reshape((len(flat_covariance_mats), 3, 3))
 
     metrics_result_dict = dict()
-    metrics_result_dict['mean_of_traces'] = float(np.mean(covariance_mats.trace(axis1=1, axis2=2)))
-    metrics_result_dict['mean_of_covariance_x_x'] = float(np.mean(covariance_mats[:, 0, 0]))
-    metrics_result_dict['mean_of_covariance_y_y'] = float(np.mean(covariance_mats[:, 1, 1]))
-    metrics_result_dict['mean_of_covariance_theta_theta'] = float(np.mean(covariance_mats[:, 2, 2]))
 
-    eigenvalues, eigenvectors = np.linalg.eig(covariance_mats)
-    translation_eigenvalues, translation_eigenvectors = np.linalg.eig(covariance_mats[:, :2, :2])
-    metrics_result_dict['mean_of_max_eigenvalue'] = float(np.mean(np.max(eigenvalues, axis=1)))
-    metrics_result_dict['mean_of_max_translation_eigenvalue'] = float(np.mean(np.max(translation_eigenvalues, axis=1)))
-    metrics_result_dict['mean_of_min_translation_eigenvalue'] = float(np.mean(np.min(translation_eigenvalues, axis=1)))
-    metrics_result_dict['mean_of_translation_eigenvalues_ratio'] = float(np.mean(np.min(translation_eigenvalues, axis=1)/np.max(translation_eigenvalues, axis=1)))
+    if len(covariance_mats) > 0:
+        metrics_result_dict['mean_of_covariance_x_x'] = float(np.mean(covariance_mats[:, 0, 0]))
+        metrics_result_dict['mean_of_covariance_y_y'] = float(np.mean(covariance_mats[:, 1, 1]))
+        metrics_result_dict['mean_of_covariance_theta_theta'] = float(np.mean(covariance_mats[:, 2, 2]))
+
+        translation_eigenvalues, translation_eigenvectors = np.linalg.eig(covariance_mats[:, :2, :2])
+        translation_eigenvalues_ratios = np.min(translation_eigenvalues, axis=1)/np.max(translation_eigenvalues, axis=1)
+        metrics_result_dict['mean_of_translation_eigenvalues_ratio'] = float(1.0 - np.mean(translation_eigenvalues_ratios))
+        metrics_result_dict['mean_of_translation_eigenvalues_ratio_all'] = float(1.0 - np.sum(translation_eigenvalues_ratios)/(len(translation_eigenvalues_ratios) + inf_covariance_count))
+    else:
+        metrics_result_dict['mean_of_translation_eigenvalues_ratio_all'] = 1.0
 
     metrics_result_dict['start_time'] = start_time
     metrics_result_dict['end_time'] = end_time
-    metrics_result_dict['version'] = "0.2"
+    metrics_result_dict['version'] = "0.3"
     return metrics_result_dict
 
 
