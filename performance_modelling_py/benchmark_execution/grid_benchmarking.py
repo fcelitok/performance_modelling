@@ -36,33 +36,7 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
 
     log_file_path = path.join(base_run_folder, "benchmark_log.csv")
 
-    with open(grid_benchmark_configuration, 'r') as f:
-        grid_benchmark_configuration = yaml.safe_load(f)
-
-    combinatorial_parameters_dict = grid_benchmark_configuration['combinatorial_parameters']
-
-    # add environment_name to the parameters and populate the environment_folders_by_name lookup dict
-    environment_folders_by_name = dict()
-    combinatorial_parameters_dict['environment_name'] = list()
-    for environment_folder in environment_folders:
-        environment_name = path.basename(path.abspath(environment_folder))
-        environment_folders_by_name[environment_name] = environment_folder
-        combinatorial_parameters_dict['environment_name'].append(environment_name)
-
-    # convert the dict with {parameter_name_1: [parameter_value_1, parameter_value_2], ...}
-    # to the list [(parameter_name_1, parameter_value_1), (parameter_name_1, parameter_value_2), ...]
-    parameters_alternatives = list()
-    for parameter_name, parameter_values_list in combinatorial_parameters_dict.items():
-        parameter_list_of_tuples = list(map(lambda parameter_value: (parameter_name, parameter_value), parameter_values_list))
-        parameters_alternatives.append(parameter_list_of_tuples)
-
-    # obtain the list of combinations from the list of alternatives
-    # ex: itertools.product([(a, 1), (a, 2)], [(b, 0.1), (b, 0.2)]) --> [ [(a, 1), (b, 0.1)], [(a, 1), (b, 0.2)], [(a, 2), (b, 0.1)], [(a, 2), (b, 0.2)] ]
-    parameters_combinations_lists = list(itertools.product(*parameters_alternatives))
-
-    # convert the list of lists to a list of dicts
-    parameters_combinations_dict_list = list(map(dict, parameters_combinations_lists))
-
+    # get list of param combinations already executed in
     executed_params_combinations = defaultdict(int)
     run_folders = sorted(list(filter(path.isdir, glob.glob(path.abspath(base_run_folder) + '/*'))))
     if not ignore_executed_params_combinations:
@@ -82,6 +56,41 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
                 except:
                     print_error(traceback.format_exc())
 
+    with open(grid_benchmark_configuration, 'r') as f:
+        grid_benchmark_configuration = yaml.safe_load(f)
+
+    if isinstance(grid_benchmark_configuration['combinatorial_parameters'], list):
+        combinatorial_parameters_dict_list = grid_benchmark_configuration['combinatorial_parameters']
+    elif isinstance(grid_benchmark_configuration['combinatorial_parameters'], dict):
+        combinatorial_parameters_dict_list = [grid_benchmark_configuration['combinatorial_parameters']]
+    else:
+        print_error("grid_benchmark_configuration combinatorial_parameters must be a list or dict")
+        sys.exit(-1)
+
+    environment_folders_by_name = dict()
+    parameters_combinations_dict_list = list()
+    for combinatorial_parameters_dict in combinatorial_parameters_dict_list:
+        # add environment_name to the parameters and populate the environment_folders_by_name lookup dict
+        combinatorial_parameters_dict['environment_name'] = list()
+        for environment_folder in environment_folders:
+            environment_name = path.basename(path.abspath(environment_folder))
+            environment_folders_by_name[environment_name] = environment_folder
+            combinatorial_parameters_dict['environment_name'].append(environment_name)
+
+        # convert the dict with {parameter_name_1: [parameter_value_1, parameter_value_2], ...}
+        # to the list [(parameter_name_1, parameter_value_1), (parameter_name_1, parameter_value_2), ...]
+        parameters_alternatives = list()
+        for parameter_name, parameter_values_list in combinatorial_parameters_dict.items():
+            parameter_list_of_tuples = list(map(lambda parameter_value: (parameter_name, parameter_value), parameter_values_list))
+            parameters_alternatives.append(parameter_list_of_tuples)
+
+        # obtain the list of combinations from the list of alternatives
+        # ex: itertools.product([(a, 1), (a, 2)], [(b, 0.1), (b, 0.2)]) --> [ [(a, 1), (b, 0.1)], [(a, 1), (b, 0.2)], [(a, 2), (b, 0.1)], [(a, 2), (b, 0.2)] ]
+        parameters_combinations_lists = list(itertools.product(*parameters_alternatives))
+
+        # convert the list of lists to a list of dicts
+        parameters_combinations_dict_list += list(map(dict, parameters_combinations_lists))
+
     remaining_params_combinations = list()
     for parameters_combination_dict in parameters_combinations_dict_list:
         parameters_combination_dict_copy = parameters_combination_dict.copy()
@@ -92,6 +101,7 @@ def execute_grid_benchmark(benchmark_run_object, grid_benchmark_configuration, e
         num_remaining_runs = num_runs - executed_repetitions
         if num_remaining_runs > 0:
             remaining_params_combinations += [parameters_combination_dict] * num_remaining_runs
+            executed_params_combinations[parameters_combination_hashable_dict] += num_remaining_runs  # count this combination in executed_params_combinations in case there are duplicated combinations in parameters_combinations_dict_list
 
     num_combinations = len(parameters_combinations_dict_list)
     num_runs_remaining = len(remaining_params_combinations)
