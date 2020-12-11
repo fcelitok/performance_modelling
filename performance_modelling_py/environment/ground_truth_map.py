@@ -3,6 +3,7 @@
 
 from __future__ import print_function
 
+import argparse
 import glob
 import os
 import pickle
@@ -133,8 +134,11 @@ def black_white_to_ground_truth_map(input_map_path, map_info_path, trim_borders=
     try:
         map_image.save(map_image_path)
         if map_files_dump_path is not None:
+            print(map_files_dump_path)
+            map_files_dump_path = path.abspath(path.expanduser(map_files_dump_path))
+            print(map_files_dump_path)
             if not path.exists(map_files_dump_path):
-                os.makedirs(path.basename(map_files_dump_path))
+                os.makedirs(map_files_dump_path)
             dataset_name = path.basename(path.dirname(path.dirname(map_image_path)))
             map_image.save(path.join(map_files_dump_path, dataset_name + '.pgm'))
     except IOError:
@@ -418,10 +422,13 @@ class GroundTruthMap:
 
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
-        fig.set_size_inches(*cm_to_body_parts(10 * self.map_size_meters))
+        fig_size = cm_to_body_parts(5 * self.map_size_meters)
+        fig.set_size_inches(*fig_size)
 
         start_time = time.time()
         print("plotting. nodes: {}/{}".format(min(max_nodes, graph.number_of_nodes()), graph.number_of_nodes()))
+        print("          edges: {}/{}".format(min(max_nodes, graph.number_of_nodes()), graph.number_of_edges()))
+        print("          fig size: {} cm".format(fig_size))
 
         num_nodes = 0
         nth = max(1, graph.number_of_nodes() // max_nodes)
@@ -480,6 +487,7 @@ class GroundTruthMap:
         ax.scatter(h_wall_points_meters[:, 0], h_wall_points_meters[:, 1], s=15.0, marker='_')
         ax.scatter(v_wall_points_meters[:, 0], v_wall_points_meters[:, 1], s=15.0, marker='|')
 
+        print("saving plot:", plot_file_path)
         fig.savefig(plot_file_path)
         plt.close(fig)
 
@@ -577,10 +585,41 @@ class GroundTruthMap:
 
 
 if __name__ == '__main__':
-    environment_folders = sorted(filter(path.isdir, glob.glob(path.expanduser("~/ds/performance_modelling/radish_datasets/dataset/intel"))))
-    dump_path = path.expanduser("~/tmp/gt_maps/")
+    default_environment_folders = "~/ds/performance_modelling/test_datasets/dataset/*"
+    default_dump_path = "~/tmp/gt_maps/"
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description='Computes ground truth map, mesh and Voronoi plots from source image.')
+    parser.add_argument('-e', dest='environment_folders',
+                        help='Folder containing the datasets. Example: {}'.format(default_environment_folders),
+                        type=str,
+                        required=True)
+
+    parser.add_argument('-d', dest='dump_path',
+                        help='Folder in which to dump a copy of the generated map images. Defaults to {}'.format(default_dump_path),
+                        type=str,
+                        default=default_dump_path,
+                        required=False)
+
+    parser.add_argument('-r', dest='recompute_data',
+                        help='If set, the data is re-computed.',
+                        action='store_true',
+                        default=False,
+                        required=False)
+
+    parser.add_argument('-p', dest='save_visualization_plots',
+                        help='If set, the Voronoi visualization plots are computed and saved.',
+                        action='store_true',
+                        default=False,
+                        required=False)
+
+    args = parser.parse_args()
+
+    environment_folders = sorted(filter(path.isdir, glob.glob(path.expanduser(args.environment_folders))))
+    dump_path = args.dump_path
+
     print_info("computing environment data {}%".format(0))
-    recompute_data = True
+    recompute_data = args.recompute_data
+    save_visualization_plots = args.save_visualization_plots
     recompute_plots = True
 
     for progress, environment_folder in enumerate(environment_folders):
@@ -589,19 +628,29 @@ if __name__ == '__main__':
         map_info_file_path = path.join(environment_folder, "data", "map.yaml")
 
         # compute GroundTruthMap data from source image
-        source_map_file_path = path.join(environment_folder, "data", "source_map.pgm")
-        if path.exists(source_map_file_path):
+        source_map_file_path = None
+        source_pgm_map_file_path = path.join(environment_folder, "data", "source_map.pgm")
+        source_png_map_file_path = path.join(environment_folder, "data", "source_map.png")
+        if path.exists(source_pgm_map_file_path):
+            source_map_file_path = source_pgm_map_file_path
+        elif path.exists(source_png_map_file_path):
+            source_map_file_path = source_png_map_file_path
+        else:
+            print_error("source_map file not found")
+
+        if source_map_file_path is not None:
             black_white_to_ground_truth_map(source_map_file_path, map_info_file_path, do_not_recompute=not recompute_data, map_files_dump_path=dump_path)
 
-        # compute voronoi plot
-        robot_radius_plot = 2.0 * 0.2
-        voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
-        reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "reduced_voronoi.svg")
-        deleaved_reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "deleaved_reduced_voronoi.svg")
-        m = GroundTruthMap(map_info_file_path)
-        m.save_voronoi_plot(voronoi_plot_file_path, min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
-        m.save_voronoi_plot(reduced_voronoi_plot_file_path, graph=m.reduced_voronoi_graph(minimum_radius=robot_radius_plot), min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
-        m.save_voronoi_plot(deleaved_reduced_voronoi_plot_file_path, graph=m.deleaved_reduced_voronoi_graph(robot_radius_plot), min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
+        if save_visualization_plots:
+            # compute voronoi plot
+            robot_radius_plot = 2.5 * 0.2
+            voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "voronoi.svg")
+            reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "reduced_voronoi.svg")
+            deleaved_reduced_voronoi_plot_file_path = path.join(environment_folder, "data", "visualization", "deleaved_reduced_voronoi.svg")
+            m = GroundTruthMap(map_info_file_path)
+            m.save_voronoi_plot(voronoi_plot_file_path, min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
+            m.save_voronoi_plot(reduced_voronoi_plot_file_path, graph=m.reduced_voronoi_graph(minimum_radius=robot_radius_plot), min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
+            m.save_voronoi_plot(deleaved_reduced_voronoi_plot_file_path, graph=m.deleaved_reduced_voronoi_graph(robot_radius_plot), min_radius=robot_radius_plot, do_not_recompute=not recompute_plots)
 
         # compute mesh
         from performance_modelling_py.environment.mesh_utils import gridmap_to_mesh
