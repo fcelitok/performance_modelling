@@ -17,6 +17,8 @@ dataset_files = glob.glob(dataset_path + '/**/*.dae', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.svg', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.posegraph', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.pkl', recursive=True) + \
+                glob.glob(dataset_path + '/**/*.bag', recursive=True) + \
+                glob.glob(dataset_path + '/**/*.log', recursive=True) + \
                 glob.glob(dataset_path + '/**/*.data', recursive=True)
 
 for file_path in dataset_files:
